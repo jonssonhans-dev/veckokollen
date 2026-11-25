@@ -241,6 +241,7 @@
     let weekOffset = 0;
     let isHomeworkOpen = true;
     let viewMode = 'day';
+    let parentFilter = 'all'; // 'all' | 'food' | 'Elsa' | 'Nils'
     let selectedPerson = currentUser || 'Elsa';
     let selectedHwPerson = (currentUser === 'Elsa' || currentUser === 'Nils') ? currentUser : 'Elsa';
 
@@ -293,6 +294,7 @@
           dateLabel: `${d.getDate()} ${months[d.getMonth()]}`,
           isWeekend: i >= 5,
           isToday: iso === todayIso,
+          isPast: iso < todayIso,
           weather: null
         };
       });
@@ -788,8 +790,12 @@
     }
 
     function renderHomeworkRadar() {
-      const openTasks = homeworks.filter(h => !h.done);
-      const allDone = homeworks.length > 0 && openTasks.length === 0;
+      if (isAdmin && parentFilter === 'food') return '';
+      const visibleHomeworks = (isAdmin && (parentFilter === 'Elsa' || parentFilter === 'Nils'))
+        ? homeworks.filter(h => h.person === parentFilter)
+        : homeworks;
+      const openTasks = visibleHomeworks.filter(h => !h.done);
+      const allDone = visibleHomeworks.length > 0 && openTasks.length === 0;
 
       const statusBadge = allDone
         ? `<span class="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">Allt klart! 🎉</span>`
@@ -797,8 +803,8 @@
 
       const listHtml = isHomeworkOpen ? `
         <div class="space-y-1.5 mt-2.5 pt-2 border-t border-rose-200/60">
-          ${homeworks.length === 0 ? `<p class="text-xs text-slate-500 italic">Inga läxor eller prov inlagda.</p>` : ''}
-          ${homeworks.map(hw => {
+          ${visibleHomeworks.length === 0 ? `<p class="text-xs text-slate-500 italic">Inga läxor eller prov inlagda.</p>` : ''}
+          ${visibleHomeworks.map(hw => {
             const p = getPersonDisplay(hw.person);
             const due = formatDueDate(hw.due_date);
             const canDelHw = isAdmin || (currentUser && hw.person === currentUser);
@@ -876,36 +882,72 @@
       `;
     }
 
+    function filterEventForParent(ev) {
+      if (parentFilter === 'all') return true;
+      if (parentFilter === 'food') return ev.is_dinner || (ev.title && ev.title.toLowerCase().startsWith('middag:'));
+      if (parentFilter === 'Elsa') return ev.person === 'Elsa' || ev.person === 'Alla';
+      if (parentFilter === 'Nils') return ev.person === 'Nils' || ev.person === 'Alla';
+      return true;
+    }
+
     function renderParentOverview() {
-      const events = getExpandedEventsForWeek();
-      const pendingCount = events.filter(e => e.status === 'pending').length;
+      const allWeekEvents = getExpandedEventsForWeek();
+      const pendingCount = allWeekEvents.filter(e => e.status === 'pending').length;
       document.getElementById('header-subtitle').textContent = pendingCount > 0 ? `• ${pendingCount} förslag` : "";
       const main = document.getElementById('main-content');
 
+      const filterOptions = [
+        { id: 'all', label: '📋 Alla' },
+        { id: 'food', label: '🍽️ Mat & Meny' },
+        { id: 'Elsa', label: `${avatars.Elsa || '🦊'} Elsa` },
+        { id: 'Nils', label: `${avatars.Nils || '🚀'} Nils` }
+      ];
+
+      const filterBarHtml = `
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+          ${filterOptions.map(f => {
+            const active = parentFilter === f.id;
+            return `<button type="button" onclick="parentFilter='${f.id}'; render();" class="px-3 py-1.5 rounded-full text-xs font-bold border transition shrink-0 ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}">${f.label}</button>`;
+          }).join('')}
+        </div>
+      `;
+
+      const showLyckeby = parentFilter === 'all' || parentFilter === 'food' || parentFilter === 'Elsa';
+      const showHaga = parentFilter === 'all' || parentFilter === 'food' || parentFilter === 'Nils';
+
       const weekdaysHtml = weekDays.slice(0, 5).map(d => {
-        const dayEvents = events.filter(e => e.event_date === d.iso).sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
+        const dayEvents = allWeekEvents
+          .filter(e => e.event_date === d.iso && filterEventForParent(e))
+          .sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
         const lyckebyFood = schoolMenus.lyckeby[d.iso] || 'Ingen meny';
         const hagaFood = schoolMenus.haga[d.iso] || 'Ingen meny';
 
+        const cardStyle = d.isPast
+          ? 'bg-slate-100/80 border-slate-200/80 opacity-55 grayscale-[45%]'
+          : (d.isToday ? 'bg-white border-indigo-400 ring-1 ring-indigo-100 shadow-xs' : 'bg-white border-slate-200 shadow-xs');
+
         return `
-          <div class="bg-white rounded-xl p-3 border ${d.isToday ? 'border-indigo-400 ring-1 ring-indigo-100' : 'border-slate-200'} shadow-xs">
+          <div class="rounded-xl p-3 border transition-all ${cardStyle}">
             <div class="flex justify-between items-center mb-1.5 gap-1">
               <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="font-bold text-sm text-slate-900">${d.full}</span>
+                <span class="font-bold text-sm ${d.isPast ? 'text-slate-500' : 'text-slate-900'}">${d.full}</span>
                 <span class="text-xs text-slate-400">${d.dateLabel}</span>
+                ${d.isToday ? `<span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">Idag</span>` : ''}
                 ${renderWeatherPill(d.weather)}
               </div>
               <div class="flex items-center gap-1 shrink-0">
                 <button onclick="openSheet('${d.iso}', 'dinner')" class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">✨ Middag</button>
-                <button onclick="openSheet('${d.iso}', 'event')" class="text-xs font-semibold text-indigo-600 px-1.5 py-0.5 rounded">+</button>
+                ${parentFilter !== 'food' ? `<button onclick="openSheet('${d.iso}', 'event')" class="text-xs font-semibold text-indigo-600 px-1.5 py-0.5 rounded">+</button>` : ''}
               </div>
             </div>
-            <div class="text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg mb-2 flex flex-col gap-0.5">
-              <div><span class="font-semibold text-indigo-600">${avatars.Elsa} Lyckeby:</span> ${lyckebyFood}</div>
-              <div><span class="font-semibold text-emerald-600">${avatars.Nils} Haga:</span> ${hagaFood}</div>
-            </div>
+            ${(showLyckeby || showHaga) ? `
+              <div class="text-[11px] text-slate-500 bg-slate-50/90 px-2.5 py-1.5 rounded-lg mb-2 flex flex-col gap-0.5">
+                ${showLyckeby ? `<div><span class="font-semibold text-indigo-600">${avatars.Elsa} Lyckeby:</span> ${lyckebyFood}</div>` : ''}
+                ${showHaga ? `<div><span class="font-semibold text-emerald-600">${avatars.Nils} Haga:</span> ${hagaFood}</div>` : ''}
+              </div>
+            ` : ''}
             <div class="space-y-1.5">
-              ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<p class="text-[11px] text-slate-400 italic px-1">Inga aktiviteter</p>`}
+              ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<p class="text-[11px] text-slate-400 italic px-1">${parentFilter === 'food' ? 'Ingen middag inlagd' : 'Inga aktiviteter'}</p>`}
             </div>
           </div>
         `;
@@ -916,19 +958,25 @@
           <h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-2">🎉 Helgen (Lördag & Söndag)</h2>
           <div class="grid grid-cols-2 gap-2.5">
             ${weekDays.slice(5, 7).map(d => {
-              const dayEvents = events.filter(e => e.event_date === d.iso).sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
+              const dayEvents = allWeekEvents
+                .filter(e => e.event_date === d.iso && filterEventForParent(e))
+                .sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
+              const weekendCardStyle = d.isPast
+                ? 'bg-slate-100/80 border-slate-200 opacity-55 grayscale-[45%]'
+                : (d.isToday ? 'bg-white border-indigo-400 ring-1 ring-indigo-100 shadow-xs' : 'bg-white border-indigo-200 shadow-xs');
+
               return `
-                <div class="bg-white rounded-xl p-2.5 border border-indigo-200 shadow-xs flex flex-col justify-between">
+                <div class="rounded-xl p-2.5 border flex flex-col justify-between transition-all ${weekendCardStyle}">
                   <div>
                     <div class="flex justify-between items-start mb-1.5 pb-1.5 border-b border-slate-100">
                       <div>
-                        <span class="font-bold text-xs text-slate-900 block">${d.full} ${d.dateLabel}</span>
+                        <span class="font-bold text-xs ${d.isPast ? 'text-slate-500' : 'text-slate-900'} block">${d.full} ${d.dateLabel}</span>
                         <div class="mt-1">${renderWeatherPill(d.weather)}</div>
                       </div>
-                      <button onclick="openSheet('${d.iso}', 'event')" class="text-xs font-bold text-indigo-600 bg-indigo-50 w-6 h-6 rounded-md shrink-0">+</button>
+                      <button onclick="openSheet('${d.iso}', '${parentFilter === 'food' ? 'dinner' : 'event'}')" class="text-xs font-bold text-indigo-600 bg-indigo-50 w-6 h-6 rounded-md shrink-0">+</button>
                     </div>
                     <div class="space-y-1.5">
-                      ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<p class="text-[11px] text-slate-400 italic">Ledigt</p>`}
+                      ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<p class="text-[11px] text-slate-400 italic">${parentFilter === 'food' ? 'Ingen middag' : 'Ledigt'}</p>`}
                     </div>
                   </div>
                 </div>
@@ -938,7 +986,7 @@
         </div>
       `;
 
-      main.innerHTML = renderHomeworkRadar() + weekdaysHtml + weekendHtml;
+      main.innerHTML = filterBarHtml + renderHomeworkRadar() + weekdaysHtml + weekendHtml;
     }
 
     function renderChildView() {
@@ -948,6 +996,7 @@
         const hasPending = events.some(e => e.event_date === d.iso && e.status === 'pending');
         const isSelected = (viewMode === 'day' && d.iso === selectedDateIso) || (viewMode === 'weekend' && d.isWeekend);
         let baseStyle = d.isWeekend ? 'bg-white/70 text-indigo-900 border border-indigo-100' : 'bg-white/70 text-slate-700';
+        if (d.isPast && !isSelected) baseStyle = 'bg-slate-200/60 text-slate-400 opacity-60';
         if (isSelected) baseStyle = 'bg-indigo-600 text-white shadow-sm';
 
         return `
