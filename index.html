@@ -16,27 +16,45 @@
     
     <!-- Dynamisk Väder-Header -->
     <header id="weather-header" class="bg-gradient-to-br from-sky-200 via-sky-100 to-slate-50 px-4 pt-5 pb-3 border-b border-slate-200/80 sticky top-0 z-10 transition-colors duration-500">
-      <div class="flex justify-between items-start mb-2.5">
+      <div class="flex justify-between items-start mb-2">
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <h1 class="text-xl font-bold text-slate-900" id="header-title">Veckokollen</h1>
             <div id="current-weather-badge" class="flex items-center gap-1.5 bg-white/80 backdrop-blur-xs border border-white/60 text-slate-800 px-2.5 py-0.5 rounded-full text-xs font-semibold shadow-2xs">
               <span>⏳</span><span>Haninge...</span>
             </div>
           </div>
-          <p class="text-xs text-slate-600 mt-0.5 font-medium" id="header-subtitle">Laddar vecka...</p>
+          
+          <!-- Veckorad: Barn ser bara V.XX, Förälder ser även Barnvecka/Egen vecka + veckoväxlare -->
+          <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <div id="week-nav-controls" class="hidden flex items-center gap-1 bg-white/80 border border-slate-200 rounded-full px-1.5 py-0.5 shadow-2xs">
+              <button onclick="changeWeek(-1)" class="text-xs font-bold text-slate-600 px-1.5 hover:text-indigo-600">◀</button>
+              <span id="parent-week-label" class="text-[11px] font-bold text-slate-800 px-1">V.48</span>
+              <button onclick="changeWeek(1)" class="text-xs font-bold text-slate-600 px-1.5 hover:text-indigo-600">▶</button>
+              <button id="reset-week-btn" onclick="resetWeek()" class="hidden text-[10px] font-bold text-indigo-600 pl-1 border-l border-slate-200">Idag</button>
+            </div>
+            <span id="child-week-pill" class="text-[11px] font-bold bg-white/80 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full shadow-2xs">V.48</span>
+            <span id="week-type-badge" class="hidden text-[11px] font-bold px-2.5 py-0.5 rounded-full border shadow-2xs"></span>
+            <p class="text-xs text-slate-600 font-medium" id="header-subtitle"></p>
+          </div>
         </div>
         
-        <div class="flex items-center gap-1.5">
-          <button onclick="openProfilePicker()" id="user-badge-btn" title="Välj användare & avatar" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1">
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="openProfilePicker()" id="user-badge-btn" title="Välj användare, avatar & status" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1">
             <span>👤</span><span>Välj profil</span>
           </button>
           <button id="weekend-btn" onclick="selectWeekendView()" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-indigo-700 border-indigo-200 shadow-2xs">🎉 Helg</button>
         </div>
       </div>
 
+      <!-- Statusrad (Barnens humör/status + Nedräknare) -->
+      <div id="status-bar" class="flex items-center justify-between gap-2 pt-1.5 mt-1 border-t border-black/5 text-[11px]">
+        <div id="family-moods" class="flex items-center gap-2 overflow-x-auto"></div>
+        <div id="countdown-pill" class="shrink-0"></div>
+      </div>
+
       <!-- Dagväljare (Barnläge) -->
-      <div id="day-tabs" class="grid grid-cols-7 gap-1 py-1"></div>
+      <div id="day-tabs" class="grid grid-cols-7 gap-1 pt-2"></div>
     </header>
 
     <!-- Huvudinnehåll -->
@@ -68,11 +86,10 @@
           <label class="block text-xs font-semibold text-slate-500 mb-1">Gäller vem?</label>
           <div class="grid grid-cols-4 gap-2" id="person-buttons-event"></div>
         </div>
-        <div class="flex flex-wrap gap-1.5">
-          <button type="button" onclick="quickFill('event', 'Ta med kompis hem')" class="text-xs bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">🏠 Kompis hem</button>
-          <button type="button" onclick="quickFill('event', 'Leka hos kompis')" class="text-xs bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">👋 Hos kompis</button>
-          <button type="button" onclick="quickFill('event', 'Spelstund')" class="text-xs bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">🎮 Spelstund</button>
-        </div>
+        
+        <!-- Snabbval (anpassas efter Barn vs Förälder) -->
+        <div class="flex flex-wrap gap-1.5" id="quick-fill-chips"></div>
+
         <div>
           <input type="text" id="input-title" required placeholder="Vad händer?" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm">
         </div>
@@ -85,6 +102,14 @@
             <label class="block text-xs font-semibold text-slate-500 mb-1">Tid (valfritt)</label>
             <input type="time" id="input-time" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm">
           </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Upprepning</label>
+          <select id="input-recurrence" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
+            <option value="none">Engångshändelse</option>
+            <option value="weekly">🔄 Varje vecka (samma veckodag)</option>
+            <option value="biweekly">🔁 Varannan vecka (samma veckodag)</option>
+          </select>
         </div>
         <button type="submit" id="submit-btn" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-xl shadow-md">Skicka förslag</button>
       </form>
@@ -118,12 +143,12 @@
           <div>
             <label class="block text-xs font-semibold text-slate-500 mb-1">Typ</label>
             <select id="hw-type" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
-              <option value="weekly">Veckoläxa</option>
-              <option value="exam">Prov / Inlämning</option>
+              <option value="weekly">Veckoläxa (återkommande)</option>
+              <option value="exam">Prov / Inlämning (engångs)</option>
             </select>
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-500 mb-1">Klar senast</label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Klar senast (dag)</label>
             <input type="date" id="hw-due" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
           </div>
         </div>
@@ -132,22 +157,46 @@
     </div>
   </div>
 
-  <!-- Profil- & Avatar-väljare (Sparar användare på mobilen) -->
-  <div id="profile-modal" class="hidden fixed inset-0 bg-black/50 z-30 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl">
+  <!-- Profil-, Humör-, Avatar- & Nedräknings-modal -->
+  <div id="profile-modal" class="hidden fixed inset-0 bg-black/50 z-30 flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl my-auto">
       <div class="flex justify-between items-center mb-3">
-        <h3 class="text-base font-bold">Vem använder denna mobil?</h3>
+        <h3 class="text-base font-bold">Profil & Status</h3>
         <button onclick="closeProfilePicker()" class="text-slate-400 font-bold">✕</button>
       </div>
-      <p class="text-xs text-slate-500 mb-3">Ditt val sparas på telefonen så dina förslag fylls i automatiskt och du kan ta bort det du själv lagt in.</p>
       
-      <!-- Välj vem som äger telefonen -->
-      <div class="grid grid-cols-3 gap-2 mb-4" id="active-user-selector"></div>
+      <label class="block text-xs font-semibold text-slate-500 mb-1.5">Vem använder denna mobil?</label>
+      <div class="grid grid-cols-3 gap-2 mb-3.5" id="active-user-selector"></div>
+
+      <!-- Dagens humör / status -->
+      <div class="border-t pt-3 mb-3.5">
+        <span class="text-xs font-bold text-slate-700 block mb-1.5">Dagens status för <span id="editing-mood-name"></span>:</span>
+        <div class="flex flex-wrap gap-1.5" id="mood-grid"></div>
+      </div>
 
       <!-- Byt avatar -->
-      <div class="border-t pt-3">
-        <span class="text-xs font-bold text-slate-700 block mb-2">Byt avatar för <span id="editing-avatar-name"></span>:</span>
+      <div class="border-t pt-3 mb-3">
+        <span class="text-xs font-bold text-slate-700 block mb-1.5">Byt avatar:</span>
         <div class="flex flex-wrap gap-1.5" id="avatar-emoji-grid"></div>
+      </div>
+
+      <!-- Föräldrainställningar: Varannan vecka + Nedräknare -->
+      <div id="admin-settings-box" class="border-t pt-3 space-y-3 hidden">
+        <div>
+          <span class="text-xs font-bold text-slate-700 block mb-1.5">🏠 Barnvecka (varannan vecka):</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" id="btn-even-weeks" onclick="setKidsWeekParity('even')" class="py-1.5 px-2.5 rounded-xl border text-xs font-semibold">Jämna veckor</button>
+            <button type="button" id="btn-odd-weeks" onclick="setKidsWeekParity('odd')" class="py-1.5 px-2.5 rounded-xl border text-xs font-semibold">Udda veckor</button>
+          </div>
+        </div>
+        <div>
+          <span class="text-xs font-bold text-slate-700 block mb-1">⏳ Nedräkning i toppen (valfritt):</span>
+          <div class="grid grid-cols-5 gap-1.5">
+            <input type="text" id="countdown-title-input" placeholder="T.ex. Jullov 🎄" class="col-span-3 border border-slate-300 rounded-lg px-2 py-1.5 text-xs">
+            <input type="date" id="countdown-date-input" class="col-span-2 border border-slate-300 rounded-lg px-1.5 py-1.5 text-xs">
+          </div>
+          <button type="button" onclick="saveCountdown()" class="mt-1.5 text-[11px] font-bold text-indigo-600">Spara nedräkning</button>
+        </div>
       </div>
 
       <button onclick="closeProfilePicker()" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-xl mt-4 text-sm">Klar</button>
@@ -164,28 +213,52 @@
 
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Lokal användarprofil på den aktuella mobilen ('Elsa', 'Nils' eller 'Pappa')
+    // State
     let currentUser = localStorage.getItem('veckokollen_user') || null;
     let isAdmin = currentUser === 'Pappa';
+    let kidsWeekParity = localStorage.getItem('veckokollen_parity') || 'even';
+    let weekOffset = 0; // 0 = innevarande vecka, +1 = nästa vecka osv.
     let isHomeworkOpen = true;
     let viewMode = 'day';
     let selectedPerson = currentUser || 'Elsa';
     let selectedHwPerson = (currentUser === 'Elsa' || currentUser === 'Nils') ? currentUser : 'Elsa';
 
     let avatars = { Elsa: '🦊', Nils: '🚀', Pappa: '☕', Alla: '🏠' };
-    const avatarChoices = ['🦊', '🐱', '🦄', '⚽', '🎨', '🚀', '🦖', '🎮', '🚴', '☕', '🎸', '🌟'];
+    let moods = { Elsa: '', Nils: '', Pappa: '' };
+    let countdownConfig = { title: 'Jullov 🎄', date: '2026-12-22' };
 
-    let events = [];
+    const avatarChoices = ['🦊', '🐱', '🦄', '⚽', '🎨', '🚀', '🦖', '🎮', '🚴', '☕', '🎸', '🌟'];
+    const moodChoices = [
+      { code: '', label: 'Ingen' },
+      { code: '⚡', label: '⚡ Pigg' },
+      { code: '😴', label: '😴 Trött' },
+      { code: '📚', label: '📚 Pluggar' },
+      { code: '🎮', label: '🎮 Spelar' },
+      { code: '⚽', label: '⚽ Träning' },
+      { code: '😎', label: '😎 Chill' }
+    ];
+
+    let rawEvents = [];
     let homeworks = [];
     let schoolMenus = { lyckeby: {}, haga: {} };
 
-    function buildCurrentWeek() {
+    function getISOWeekNumber(date) {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    }
+
+    function buildWeekDays(offset = 0) {
       const now = new Date();
+      now.setDate(now.getDate() + offset * 7);
       const dayOfWeek = now.getDay();
       const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
       const monday = new Date(now);
       monday.setDate(now.getDate() + diffToMonday);
 
+      const todayIso = new Date().toISOString().split('T')[0];
       const names = [
         { short: 'Mån', full: 'Måndag' },
         { short: 'Tis', full: 'Tisdag' },
@@ -195,7 +268,6 @@
         { short: 'Lör', full: 'Lördag' },
         { short: 'Sön', full: 'Söndag' }
       ];
-
       const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
       return names.map((n, i) => {
@@ -205,16 +277,74 @@
         return {
           ...n,
           iso,
+          weekday: d.getDay(),
           dateLabel: `${d.getDate()} ${months[d.getMonth()]}`,
           isWeekend: i >= 5,
-          isToday: iso === now.toISOString().split('T')[0],
+          isToday: iso === todayIso,
           weather: null
         };
       });
     }
 
-    const weekDays = buildCurrentWeek();
+    let weekDays = buildWeekDays(0);
     let selectedDateIso = weekDays.find(d => d.isToday)?.iso || weekDays[0].iso;
+    let weatherCache = {};
+
+    function changeWeek(delta) {
+      weekOffset += delta;
+      weekDays = buildWeekDays(weekOffset);
+      // Återapplicera cachat väder på nya datum
+      weekDays.forEach(d => { if (weatherCache[d.iso]) d.weather = weatherCache[d.iso]; });
+      selectedDateIso = weekDays.find(d => d.isToday)?.iso || weekDays[0].iso;
+      updateUserUI();
+      render();
+    }
+
+    function resetWeek() {
+      weekOffset = 0;
+      changeWeek(0);
+    }
+
+    function getDisplayedWeekNumber() {
+      return getISOWeekNumber(new Date(weekDays[0].iso + 'T12:00:00'));
+    }
+
+    function isKidsWeek(weekNum) {
+      const isEven = weekNum % 2 === 0;
+      return (kidsWeekParity === 'even' && isEven) || (kidsWeekParity === 'odd' && !isEven);
+    }
+
+    function getExpandedEventsForWeek() {
+      const weekStart = weekDays[0].iso;
+      const weekEnd = weekDays[6].iso;
+      const dispWeekNum = getDisplayedWeekNumber();
+      const result = [];
+
+      rawEvents.forEach(ev => {
+        const rec = ev.recurrence || 'none';
+        if (rec === 'none') {
+          if (ev.event_date >= weekStart && ev.event_date <= weekEnd) {
+            result.push(ev);
+          }
+        } else {
+          const origDate = new Date(ev.event_date + 'T12:00:00');
+          const origWeekday = origDate.getDay();
+          const targetDay = weekDays.find(d => d.weekday === origWeekday);
+
+          if (targetDay && targetDay.iso >= ev.event_date) {
+            if (rec === 'weekly') {
+              result.push({ ...ev, event_date: targetDay.iso, is_recurring_instance: true });
+            } else if (rec === 'biweekly') {
+              const origWeek = getISOWeekNumber(origDate);
+              if (origWeek % 2 === dispWeekNum % 2) {
+                result.push({ ...ev, event_date: targetDay.iso, is_recurring_instance: true });
+              }
+            }
+          }
+        }
+      });
+      return result;
+    }
 
     const dinnerCatalog = [
       { title: "🌮 Tacos med tillbehör", tags: ["taco", "färs"] },
@@ -233,15 +363,24 @@
 
     async function loadAllData() {
       const [evRes, hwRes, profRes] = await Promise.all([
-        db.from('events').select('*').gte('event_date', weekDays[0].iso).lte('event_date', weekDays[6].iso),
+        db.from('events').select('*'),
         db.from('homeworks').select('*').order('due_date', { ascending: true }),
         db.from('profiles').select('*')
       ]);
 
-      if (evRes.data) events = evRes.data;
+      if (evRes.data) rawEvents = evRes.data;
       if (hwRes.data) homeworks = hwRes.data;
       if (profRes.data) {
-        profRes.data.forEach(p => { avatars[p.person] = p.avatar; });
+        profRes.data.forEach(p => {
+          if (p.person === '_countdown' && p.avatar) {
+            try { countdownConfig = JSON.parse(p.avatar); } catch(e) {}
+          } else if (p.person.startsWith('_mood_')) {
+            const name = p.person.replace('_mood_', '');
+            moods[name] = p.avatar;
+          } else {
+            avatars[p.person] = p.avatar;
+          }
+        });
       }
       updateUserUI();
       render();
@@ -279,7 +418,7 @@
 
     async function fetchHaningeWeather() {
       try {
-        const url = "https://api.open-meteo.com/v1/forecast?latitude=59.167&longitude=18.145&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FStockholm&forecast_days=10";
+        const url = "https://api.open-meteo.com/v1/forecast?latitude=59.167&longitude=18.145&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FStockholm&forecast_days=14";
         const res = await fetch(url);
         const data = await res.json();
 
@@ -292,11 +431,13 @@
         const header = document.getElementById('weather-header');
         const title = document.getElementById('header-title');
         const sub = document.getElementById('header-subtitle');
+        const statusBar = document.getElementById('status-bar');
 
         if (hour >= 19 || hour < 6) {
           header.className = "bg-gradient-to-br from-slate-800 via-indigo-950 to-slate-900 px-4 pt-5 pb-3 border-b border-slate-700 sticky top-0 z-10";
           title.classList.replace('text-slate-900', 'text-white');
           sub.classList.replace('text-slate-600', 'text-slate-300');
+          statusBar.classList.add('text-slate-200', 'border-white/10');
         } else if (currCode >= 51) {
           header.className = "bg-gradient-to-br from-slate-300 via-sky-200 to-slate-100 px-4 pt-5 pb-3 border-b border-slate-200 sticky top-0 z-10";
         } else if (currCode === 0) {
@@ -306,18 +447,17 @@
         document.getElementById('current-weather-badge').innerHTML = `<span>${currInfo.icon}</span><span>${currTemp}°C • ${clothTip}</span>`;
 
         data.daily.time.forEach((dateStr, i) => {
+          const info = interpretWeatherCode(data.daily.weather_code[i]);
+          const maxT = Math.round(data.daily.temperature_2m_max[i]);
+          const minT = Math.round(data.daily.temperature_2m_min[i]);
+          const precip = data.daily.precipitation_probability_max[i];
+          weatherCache[dateStr] = {
+            icon: info.icon,
+            tempRange: `${minT}° / ${maxT}°`,
+            precip: precip > 25 ? `• ${precip}%` : ""
+          };
           const dayObj = weekDays.find(d => d.iso === dateStr);
-          if (dayObj) {
-            const info = interpretWeatherCode(data.daily.weather_code[i]);
-            const maxT = Math.round(data.daily.temperature_2m_max[i]);
-            const minT = Math.round(data.daily.temperature_2m_min[i]);
-            const precip = data.daily.precipitation_probability_max[i];
-            dayObj.weather = {
-              icon: info.icon,
-              tempRange: `${minT}° / ${maxT}°`,
-              precip: precip > 25 ? `• ${precip}%` : ""
-            };
-          }
+          if (dayObj) dayObj.weather = weatherCache[dateStr];
         });
         render();
       } catch (err) {
@@ -325,9 +465,6 @@
       }
     }
 
-    // ==========================================
-    // 2. ANVÄNDARHANTERING & BEHÖRIGHET
-    // ==========================================
     function switchUser(user) {
       if (user === 'Pappa') {
         const pin = prompt("Ange föräldra-PIN för Pappa:");
@@ -336,11 +473,36 @@
       currentUser = user;
       localStorage.setItem('veckokollen_user', user);
       isAdmin = (user === 'Pappa');
+      if (!isAdmin && weekOffset !== 0) resetWeek();
       selectedPerson = user;
       if (user === 'Elsa' || user === 'Nils') selectedHwPerson = user;
       updateUserUI();
-      openProfilePicker(); // Uppdatera modalen
+      openProfilePicker();
       render();
+    }
+
+    function setKidsWeekParity(parity) {
+      kidsWeekParity = parity;
+      localStorage.setItem('veckokollen_parity', parity);
+      updateUserUI();
+      openProfilePicker();
+      render();
+    }
+
+    async function setMood(person, moodEmoji) {
+      moods[person] = moodEmoji;
+      updateUserUI();
+      openProfilePicker();
+      await db.from('profiles').upsert({ person: `_mood_${person}`, avatar: moodEmoji });
+    }
+
+    async function saveCountdown() {
+      const title = document.getElementById('countdown-title-input').value.trim();
+      const date = document.getElementById('countdown-date-input').value;
+      countdownConfig = { title, date };
+      updateUserUI();
+      await db.from('profiles').upsert({ person: '_countdown', avatar: JSON.stringify(countdownConfig) });
+      alert("Nedräkning sparad!");
     }
 
     function updateUserUI() {
@@ -350,14 +512,36 @@
       const container = document.getElementById('app-container');
       const weekendBtn = document.getElementById('weekend-btn');
       const dayTabs = document.getElementById('day-tabs');
+      
+      const weekNav = document.getElementById('week-nav-controls');
+      const childWeekPill = document.getElementById('child-week-pill');
+      const weekBadge = document.getElementById('week-type-badge');
+      const dispWeekNum = getDisplayedWeekNumber();
 
       if (currentUser) {
-        userBtn.innerHTML = `<span>${avatars[currentUser] || '👤'}</span><span>${currentUser}</span>`;
+        const m = moods[currentUser] ? ` ${moods[currentUser]}` : '';
+        userBtn.innerHTML = `<span>${avatars[currentUser] || '👤'}</span><span>${currentUser}${m}</span>`;
       } else {
         userBtn.innerHTML = `<span>👤</span><span>Välj profil</span>`;
       }
 
       if (isAdmin) {
+        // FÖRÄLDER: Visa veckoväxlare + Barnvecka/Egen vecka
+        weekNav.classList.remove('hidden');
+        childWeekPill.classList.add('hidden');
+        weekBadge.classList.remove('hidden');
+        document.getElementById('parent-week-label').textContent = `V.${dispWeekNum}`;
+        document.getElementById('reset-week-btn').classList.toggle('hidden', weekOffset === 0);
+
+        const kidsHere = isKidsWeek(dispWeekNum);
+        if (kidsHere) {
+          weekBadge.innerHTML = `🏠 Barnvecka`;
+          weekBadge.className = "text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs";
+        } else {
+          weekBadge.innerHTML = `☕ Egen vecka`;
+          weekBadge.className = "text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs";
+        }
+
         userBtn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-amber-100 text-amber-900 border-amber-300 shadow-2xs flex items-center gap-1";
         submitBtn.textContent = "Lägg in i schemat";
         dinnerSubmitBtn.textContent = "Spika middag";
@@ -365,6 +549,12 @@
         weekendBtn.classList.add('hidden');
         dayTabs.classList.add('hidden');
       } else {
+        // BARN: Visa bara veckonummer (V.48), dölj Barnvecka/Egen vecka
+        weekNav.classList.add('hidden');
+        weekBadge.classList.add('hidden');
+        childWeekPill.classList.remove('hidden');
+        childWeekPill.textContent = `V.${dispWeekNum}`;
+
         userBtn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1";
         submitBtn.textContent = "Skicka förslag";
         dinnerSubmitBtn.textContent = "Önska middag";
@@ -372,13 +562,28 @@
         weekendBtn.classList.remove('hidden');
         dayTabs.classList.remove('hidden');
       }
+
+      // Uppdatera humör-rad & nedräknare
+      const moodRow = ['Elsa', 'Nils', 'Pappa']
+        .filter(u => moods[u])
+        .map(u => `<span class="bg-white/75 text-slate-800 px-2 py-0.5 rounded-full font-medium shrink-0">${avatars[u]} ${u}: ${moods[u]}</span>`)
+        .join('');
+      document.getElementById('family-moods').innerHTML = moodRow || `<span class="opacity-70">Tryck på din profil för humör/status</span>`;
+
+      const cdEl = document.getElementById('countdown-pill');
+      if (countdownConfig.title && countdownConfig.date) {
+        const diffDays = Math.ceil((new Date(countdownConfig.date + 'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
+        if (diffDays >= 0) {
+          cdEl.innerHTML = `<span class="bg-indigo-600/90 text-white px-2 py-0.5 rounded-full font-bold shadow-2xs">⏳ ${diffDays === 0 ? 'Idag!' : diffDays + ' d'} • ${countdownConfig.title}</span>`;
+        } else {
+          cdEl.innerHTML = '';
+        }
+      }
     }
 
-    // Avgör om nuvarande användare får ta bort ett kort
     function canDeleteEvent(ev) {
-      if (isAdmin) return true; // Pappa kan ta bort allt
+      if (isAdmin) return true;
       if (!currentUser) return false;
-      // Barnen kan ta bort egna ej ännu godkända förslag (eller sina egna/Alla-förslag som är pending)
       if (ev.status === 'pending' && (ev.person === currentUser || ev.created_by === currentUser || ev.person === 'Alla')) {
         return true;
       }
@@ -425,17 +630,18 @@
       const newEv = {
         event_date: document.getElementById('input-date').value,
         start_time: document.getElementById('input-time').value || null,
-        person: selectedPerson, // Kan vara Elsa, Nils, Pappa eller Alla!
+        person: selectedPerson,
         title: document.getElementById('input-title').value,
         status: isAdmin ? 'confirmed' : 'pending',
-        is_dinner: false
+        is_dinner: false,
+        recurrence: document.getElementById('input-recurrence').value
       };
       e.target.reset();
       closeSheet();
       const { data } = await db.from('events').insert([newEv]).select();
       if (data) {
         data[0].created_by = currentUser;
-        events.push(data[0]);
+        rawEvents.push(data[0]);
         render();
       }
     });
@@ -449,26 +655,29 @@
         person: isAdmin ? 'Alla' : author,
         title: `Middag: ${document.getElementById('dinner-title').value}`,
         status: isAdmin ? 'confirmed' : 'pending',
-        is_dinner: true
+        is_dinner: true,
+        recurrence: 'none'
       };
       e.target.reset();
       closeSheet();
       const { data } = await db.from('events').insert([newEv]).select();
       if (data) {
         data[0].created_by = currentUser;
-        events.push(data[0]);
+        rawEvents.push(data[0]);
         render();
       }
     });
 
     document.getElementById('homework-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const hwType = document.getElementById('hw-type').value;
       const newHw = {
         person: selectedHwPerson,
         title: document.getElementById('hw-title').value,
-        hw_type: document.getElementById('hw-type').value,
+        hw_type: hwType,
         due_date: document.getElementById('hw-due').value,
-        done: false
+        done: false,
+        recurrence: hwType === 'weekly' ? 'weekly' : 'none'
       };
       e.target.reset();
       closeSheet();
@@ -484,6 +693,18 @@
       await db.from('homeworks').update({ done: hw.done }).eq('id', id);
     }
 
+    async function advanceWeeklyHomework(id) {
+      const hw = homeworks.find(h => h.id === id);
+      if (!hw) return;
+      const d = new Date(hw.due_date + 'T12:00:00');
+      d.setDate(d.getDate() + 7);
+      const nextIso = d.toISOString().split('T')[0];
+      hw.due_date = nextIso;
+      hw.done = false;
+      render();
+      await db.from('homeworks').update({ due_date: nextIso, done: false }).eq('id', id);
+    }
+
     async function deleteHomework(id) {
       if (!confirm("Ta bort denna läxa?")) return;
       homeworks = homeworks.filter(h => h.id !== id);
@@ -492,15 +713,23 @@
     }
 
     async function approveEvent(id) {
-      const ev = events.find(e => e.id === id);
+      const ev = rawEvents.find(e => e.id === id);
       if (!ev) return;
+      const reply = prompt("Valfritt svar/kommentar till barnen (lämna tomt för att bara godkänna):", "");
       ev.status = 'confirmed';
+      if (reply && reply.trim()) {
+        ev.title = `${ev.title} (${reply.trim()})`;
+      }
       render();
-      await db.from('events').update({ status: 'confirmed' }).eq('id', id);
+      await db.from('events').update({ status: 'confirmed', title: ev.title }).eq('id', id);
     }
 
     async function deleteEvent(id) {
-      events = events.filter(e => e.id !== id);
+      const ev = rawEvents.find(e => e.id === id);
+      if (ev && ev.recurrence && ev.recurrence !== 'none') {
+        if (!confirm("Detta är en återkommande aktivitet. Vill du ta bort hela serien?")) return;
+      }
+      rawEvents = rawEvents.filter(e => e.id !== id);
       render();
       await db.from('events').delete().eq('id', id);
     }
@@ -514,7 +743,7 @@
     }
 
     function formatDueDate(iso) {
-      const d = new Date(iso);
+      const d = new Date(iso + 'T12:00:00');
       const days = ['Sön', 'Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör'];
       const isNextWeek = iso > weekDays[6].iso;
       return {
@@ -538,8 +767,9 @@
             const p = getPersonDisplay(hw.person);
             const due = formatDueDate(hw.due_date);
             const canDelHw = isAdmin || (currentUser && hw.person === currentUser);
+            const isWeekly = hw.hw_type === 'weekly';
             return `
-              <div class="flex items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border ${hw.done ? 'border-slate-100 opacity-60' : 'border-rose-100'}">
+              <div class="flex items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border ${hw.done ? 'border-slate-100 opacity-75' : 'border-rose-100'}">
                 <div class="flex items-center gap-2.5 min-w-0">
                   <input type="checkbox" ${hw.done ? 'checked' : ''} onchange="toggleHomework('${hw.id}')" class="w-4 h-4 rounded accent-rose-600 shrink-0 cursor-pointer">
                   <div class="min-w-0">
@@ -553,7 +783,10 @@
                     <p class="text-xs font-medium text-slate-800 mt-0.5 truncate ${hw.done ? 'line-through' : ''}">${hw.title}</p>
                   </div>
                 </div>
-                ${canDelHw ? `<button onclick="deleteHomework('${hw.id}')" title="Ta bort" class="text-slate-400 hover:text-rose-600 text-xs px-1.5 py-1">✕</button>` : ''}
+                <div class="flex items-center gap-1 shrink-0">
+                  ${(isWeekly && hw.done) ? `<button onclick="advanceWeeklyHomework('${hw.id}')" title="Ladda nästa veckas läxa" class="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-1 rounded">↻ Nästa v.</button>` : ''}
+                  ${canDelHw ? `<button onclick="deleteHomework('${hw.id}')" title="Ta bort" class="text-slate-400 hover:text-rose-600 text-xs px-1.5 py-1">✕</button>` : ''}
+                </div>
               </div>
             `;
           }).join('')}
@@ -585,6 +818,7 @@
       const p = getPersonDisplay(ev.person);
       const cardBg = isPending ? 'bg-amber-50 border-amber-300 border-dashed' : (ev.is_dinner ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200');
       const allowDelete = canDeleteEvent(ev);
+      const recIcon = ev.recurrence === 'weekly' ? '🔄' : (ev.recurrence === 'biweekly' ? '🔁' : '');
 
       return `
         <div class="px-2.5 py-2 rounded-lg border flex justify-between items-center gap-2 ${cardBg}">
@@ -592,6 +826,7 @@
             <div class="flex items-center gap-1.5 flex-wrap">
               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${p.cls}">${p.label}</span>
               ${ev.start_time ? `<span class="text-[11px] font-semibold text-slate-500">${ev.start_time}</span>` : ''}
+              ${recIcon ? `<span class="text-[10px] text-slate-400" title="Återkommande">${recIcon}</span>` : ''}
               ${isPending ? `<span class="text-[10px] font-bold text-amber-700 uppercase">Förslag</span>` : ''}
             </div>
             <p class="text-xs font-medium text-slate-800 mt-0.5 truncate">${ev.title}</p>
@@ -607,14 +842,15 @@
     }
 
     function renderParentOverview() {
+      const events = getExpandedEventsForWeek();
       const pendingCount = events.filter(e => e.status === 'pending').length;
-      document.getElementById('header-subtitle').textContent = pendingCount > 0 ? `${pendingCount} väntande förslag • Veckoöversikt` : "Full veckoöversikt";
+      document.getElementById('header-subtitle').textContent = pendingCount > 0 ? `• ${pendingCount} förslag` : "";
       const main = document.getElementById('main-content');
 
       const weekdaysHtml = weekDays.slice(0, 5).map(d => {
         const dayEvents = events.filter(e => e.event_date === d.iso).sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
-        const lyckebyFood = schoolMenus.lyckeby[d.iso] || 'Ingen meny inlagd';
-        const hagaFood = schoolMenus.haga[d.iso] || 'Ingen meny inlagd';
+        const lyckebyFood = schoolMenus.lyckeby[d.iso] || 'Ingen meny';
+        const hagaFood = schoolMenus.haga[d.iso] || 'Ingen meny';
 
         return `
           <div class="bg-white rounded-xl p-3 border ${d.isToday ? 'border-indigo-400 ring-1 ring-indigo-100' : 'border-slate-200'} shadow-xs">
@@ -671,6 +907,7 @@
     }
 
     function renderChildView() {
+      const events = getExpandedEventsForWeek();
       const tabs = document.getElementById('day-tabs');
       tabs.innerHTML = weekDays.map(d => {
         const hasPending = events.some(e => e.event_date === d.iso && e.status === 'pending');
@@ -743,7 +980,6 @@
     }
 
     function renderPersonSelectors() {
-      // Både barn och vuxna kan välja sig själva eller "Alla"
       const options = isAdmin ? ['Elsa', 'Nils', 'Pappa', 'Alla'] : [currentUser || 'Elsa', 'Alla'];
       document.getElementById('person-buttons-event').innerHTML = options.map(p => `
         <button type="button" onclick="selectedPerson='${p}'; renderPersonSelectors();" class="border rounded-lg py-2 text-xs font-medium ${selectedPerson === p ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-600'}">
@@ -755,6 +991,14 @@
         <button type="button" onclick="selectedHwPerson='${p}'; renderPersonSelectors();" class="border rounded-lg py-2 text-xs font-medium ${selectedHwPerson === p ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-600'}">
           ${avatars[p]} ${p}
         </button>
+      `).join('');
+
+      // Snabbval anpassade efter barn vs förälder
+      const chips = isAdmin
+        ? ['🚗 Skjutsa / Hämta', '🎒 Packa gympapåse', '⚽ Träning', '🏠 Kompis hem']
+        : ['🏠 Ta med kompis hem', '👋 Leka hos kompis', '🎮 Spelstund', '🎬 Filmkväll'];
+      document.getElementById('quick-fill-chips').innerHTML = chips.map(c => `
+        <button type="button" onclick="quickFill('event', '${c}')" class="text-xs bg-slate-100 hover:bg-indigo-50 px-2.5 py-1 rounded-full border border-slate-200">${c}</button>
       `).join('');
     }
 
@@ -781,7 +1025,6 @@
     }
 
     function openSheet(forcedIso = null, category = 'event') {
-      // Om ingen profil är vald på mobilen ännu, be dem välja sin profil först!
       if (!currentUser) {
         openProfilePicker();
         return;
@@ -812,9 +1055,26 @@
 
       const target = currentUser || 'Elsa';
       document.getElementById('editing-avatar-name').textContent = target;
+      document.getElementById('editing-mood-name').textContent = target;
+
+      document.getElementById('mood-grid').innerHTML = moodChoices.map(m => `
+        <button type="button" onclick="setMood('${target}', '${m.code}')" class="px-2 py-1 rounded-lg text-xs border ${moods[target] === m.code ? 'bg-indigo-100 border-indigo-400 font-bold' : 'bg-slate-50 border-slate-200'}">${m.label}</button>
+      `).join('');
+
       document.getElementById('avatar-emoji-grid').innerHTML = avatarChoices.map(emo => `
         <button type="button" onclick="setAvatar('${target}', '${emo}')" class="w-8 h-8 rounded-lg text-base flex items-center justify-center ${avatars[target] === emo ? 'bg-indigo-100 ring-2 ring-indigo-500' : 'bg-slate-100 hover:bg-slate-200'}">${emo}</button>
       `).join('');
+
+      const adminBox = document.getElementById('admin-settings-box');
+      if (isAdmin) {
+        adminBox.classList.remove('hidden');
+        document.getElementById('btn-even-weeks').className = `py-1.5 px-2.5 rounded-xl border text-xs font-semibold ${kidsWeekParity === 'even' ? 'bg-emerald-50 border-emerald-500 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`;
+        document.getElementById('btn-odd-weeks').className = `py-1.5 px-2.5 rounded-xl border text-xs font-semibold ${kidsWeekParity === 'odd' ? 'bg-emerald-50 border-emerald-500 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`;
+        document.getElementById('countdown-title-input').value = countdownConfig.title || '';
+        document.getElementById('countdown-date-input').value = countdownConfig.date || '';
+      } else {
+        adminBox.classList.add('hidden');
+      }
 
       document.getElementById('profile-modal').classList.remove('hidden');
     }
