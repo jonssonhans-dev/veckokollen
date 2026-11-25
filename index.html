@@ -28,9 +28,10 @@
         </div>
         
         <div class="flex items-center gap-1.5">
-          <button onclick="openAvatarPicker()" title="Byt avatar" class="text-xs font-semibold px-2 py-1.5 rounded-full border bg-white/80 border-slate-200 shadow-2xs">🎭</button>
+          <button onclick="openProfilePicker()" id="user-badge-btn" title="Välj användare & avatar" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1">
+            <span>👤</span><span>Välj profil</span>
+          </button>
           <button id="weekend-btn" onclick="selectWeekendView()" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-indigo-700 border-indigo-200 shadow-2xs">🎉 Helg</button>
-          <button id="admin-btn" onclick="toggleAdmin()" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-slate-700 border-slate-300 shadow-2xs">🔒 Barn</button>
         </div>
       </div>
 
@@ -131,34 +132,45 @@
     </div>
   </div>
 
-  <!-- Avatar-väljare -->
-  <div id="avatar-modal" class="hidden fixed inset-0 bg-black/50 z-30 flex items-center justify-center p-4">
+  <!-- Profil- & Avatar-väljare (Sparar användare på mobilen) -->
+  <div id="profile-modal" class="hidden fixed inset-0 bg-black/50 z-30 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl">
       <div class="flex justify-between items-center mb-3">
-        <h3 class="text-base font-bold">Välj era avatarer</h3>
-        <button onclick="closeAvatarPicker()" class="text-slate-400 font-bold">✕</button>
+        <h3 class="text-base font-bold">Vem använder denna mobil?</h3>
+        <button onclick="closeProfilePicker()" class="text-slate-400 font-bold">✕</button>
       </div>
-      <div id="avatar-config-list" class="space-y-3"></div>
-      <button onclick="closeAvatarPicker()" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-xl mt-4 text-sm">Klar</button>
+      <p class="text-xs text-slate-500 mb-3">Ditt val sparas på telefonen så dina förslag fylls i automatiskt och du kan ta bort det du själv lagt in.</p>
+      
+      <!-- Välj vem som äger telefonen -->
+      <div class="grid grid-cols-3 gap-2 mb-4" id="active-user-selector"></div>
+
+      <!-- Byt avatar -->
+      <div class="border-t pt-3">
+        <span class="text-xs font-bold text-slate-700 block mb-2">Byt avatar för <span id="editing-avatar-name"></span>:</span>
+        <div class="flex flex-wrap gap-1.5" id="avatar-emoji-grid"></div>
+      </div>
+
+      <button onclick="closeProfilePicker()" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-xl mt-4 text-sm">Klar</button>
     </div>
   </div>
 
   <script>
     // ==========================================
-    // 1. SUPABASE-KONFIGURATION (FÄRDIGIFLLD)
+    // 1. SUPABASE-KONFIGURATION
     // ==========================================
     const SUPABASE_URL = 'https://stymtfwmdhkiaruzqllo.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_65AIXWtnRB3tMkLJAHsjLw_X92O1cXP';
-    const ADMIN_PIN = '1234'; // Byt till din egen 4-siffriga PIN om du vill
+    const ADMIN_PIN = '1234';
 
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // State
-    let isAdmin = localStorage.getItem('veckokollen_admin') === 'true';
+    // Lokal användarprofil på den aktuella mobilen ('Elsa', 'Nils' eller 'Pappa')
+    let currentUser = localStorage.getItem('veckokollen_user') || null;
+    let isAdmin = currentUser === 'Pappa';
     let isHomeworkOpen = true;
     let viewMode = 'day';
-    let selectedPerson = 'Elsa';
-    let selectedHwPerson = 'Elsa';
+    let selectedPerson = currentUser || 'Elsa';
+    let selectedHwPerson = (currentUser === 'Elsa' || currentUser === 'Nils') ? currentUser : 'Elsa';
 
     let avatars = { Elsa: '🦊', Nils: '🚀', Pappa: '☕', Alla: '🏠' };
     const avatarChoices = ['🦊', '🐱', '🦄', '⚽', '🎨', '🚀', '🦖', '🎮', '🚴', '☕', '🎸', '🌟'];
@@ -231,6 +243,7 @@
       if (profRes.data) {
         profRes.data.forEach(p => { avatars[p.person] = p.avatar; });
       }
+      updateUserUI();
       render();
     }
 
@@ -312,45 +325,64 @@
       }
     }
 
-    function toggleAdmin() {
-      if (!isAdmin) {
-        const pin = prompt("Ange föräldra-PIN:");
+    // ==========================================
+    // 2. ANVÄNDARHANTERING & BEHÖRIGHET
+    // ==========================================
+    function switchUser(user) {
+      if (user === 'Pappa') {
+        const pin = prompt("Ange föräldra-PIN för Pappa:");
         if (pin !== ADMIN_PIN) return alert("Fel PIN-kod");
-        isAdmin = true;
-        localStorage.setItem('veckokollen_admin', 'true');
-      } else {
-        isAdmin = false;
-        localStorage.removeItem('veckokollen_admin');
       }
-      updateAdminUI();
+      currentUser = user;
+      localStorage.setItem('veckokollen_user', user);
+      isAdmin = (user === 'Pappa');
+      selectedPerson = user;
+      if (user === 'Elsa' || user === 'Nils') selectedHwPerson = user;
+      updateUserUI();
+      openProfilePicker(); // Uppdatera modalen
       render();
     }
 
-    function updateAdminUI() {
-      const btn = document.getElementById('admin-btn');
+    function updateUserUI() {
+      const userBtn = document.getElementById('user-badge-btn');
       const submitBtn = document.getElementById('submit-btn');
       const dinnerSubmitBtn = document.getElementById('dinner-submit-btn');
       const container = document.getElementById('app-container');
       const weekendBtn = document.getElementById('weekend-btn');
       const dayTabs = document.getElementById('day-tabs');
 
+      if (currentUser) {
+        userBtn.innerHTML = `<span>${avatars[currentUser] || '👤'}</span><span>${currentUser}</span>`;
+      } else {
+        userBtn.innerHTML = `<span>👤</span><span>Välj profil</span>`;
+      }
+
       if (isAdmin) {
-        btn.textContent = "🔓 Förälder";
-        btn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-amber-100 text-amber-900 border-amber-300 shadow-2xs";
+        userBtn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-amber-100 text-amber-900 border-amber-300 shadow-2xs flex items-center gap-1";
         submitBtn.textContent = "Lägg in i schemat";
         dinnerSubmitBtn.textContent = "Spika middag";
         container.classList.replace('max-w-md', 'max-w-lg');
         weekendBtn.classList.add('hidden');
         dayTabs.classList.add('hidden');
       } else {
-        btn.textContent = "🔒 Barn";
-        btn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-slate-700 border-slate-300 shadow-2xs";
+        userBtn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1";
         submitBtn.textContent = "Skicka förslag";
         dinnerSubmitBtn.textContent = "Önska middag";
         container.classList.replace('max-w-lg', 'max-w-md');
         weekendBtn.classList.remove('hidden');
         dayTabs.classList.remove('hidden');
       }
+    }
+
+    // Avgör om nuvarande användare får ta bort ett kort
+    function canDeleteEvent(ev) {
+      if (isAdmin) return true; // Pappa kan ta bort allt
+      if (!currentUser) return false;
+      // Barnen kan ta bort egna ej ännu godkända förslag (eller sina egna/Alla-förslag som är pending)
+      if (ev.status === 'pending' && (ev.person === currentUser || ev.created_by === currentUser || ev.person === 'Alla')) {
+        return true;
+      }
+      return false;
     }
 
     let dinnerOffset = 0;
@@ -382,7 +414,8 @@
 
     async function setAvatar(person, emo) {
       avatars[person] = emo;
-      openAvatarPicker();
+      updateUserUI();
+      openProfilePicker();
       render();
       await db.from('profiles').upsert({ person, avatar: emo });
     }
@@ -392,7 +425,7 @@
       const newEv = {
         event_date: document.getElementById('input-date').value,
         start_time: document.getElementById('input-time').value || null,
-        person: selectedPerson,
+        person: selectedPerson, // Kan vara Elsa, Nils, Pappa eller Alla!
         title: document.getElementById('input-title').value,
         status: isAdmin ? 'confirmed' : 'pending',
         is_dinner: false
@@ -400,15 +433,20 @@
       e.target.reset();
       closeSheet();
       const { data } = await db.from('events').insert([newEv]).select();
-      if (data) { events.push(data[0]); render(); }
+      if (data) {
+        data[0].created_by = currentUser;
+        events.push(data[0]);
+        render();
+      }
     });
 
     document.getElementById('dinner-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const author = currentUser || selectedPerson;
       const newEv = {
         event_date: document.getElementById('dinner-date').value,
         start_time: null,
-        person: isAdmin ? 'Alla' : selectedPerson,
+        person: isAdmin ? 'Alla' : author,
         title: `Middag: ${document.getElementById('dinner-title').value}`,
         status: isAdmin ? 'confirmed' : 'pending',
         is_dinner: true
@@ -416,7 +454,11 @@
       e.target.reset();
       closeSheet();
       const { data } = await db.from('events').insert([newEv]).select();
-      if (data) { events.push(data[0]); render(); }
+      if (data) {
+        data[0].created_by = currentUser;
+        events.push(data[0]);
+        render();
+      }
     });
 
     document.getElementById('homework-form').addEventListener('submit', async (e) => {
@@ -443,6 +485,7 @@
     }
 
     async function deleteHomework(id) {
+      if (!confirm("Ta bort denna läxa?")) return;
       homeworks = homeworks.filter(h => h.id !== id);
       render();
       await db.from('homeworks').delete().eq('id', id);
@@ -494,6 +537,7 @@
           ${homeworks.map(hw => {
             const p = getPersonDisplay(hw.person);
             const due = formatDueDate(hw.due_date);
+            const canDelHw = isAdmin || (currentUser && hw.person === currentUser);
             return `
               <div class="flex items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border ${hw.done ? 'border-slate-100 opacity-60' : 'border-rose-100'}">
                 <div class="flex items-center gap-2.5 min-w-0">
@@ -509,7 +553,7 @@
                     <p class="text-xs font-medium text-slate-800 mt-0.5 truncate ${hw.done ? 'line-through' : ''}">${hw.title}</p>
                   </div>
                 </div>
-                ${isAdmin ? `<button onclick="deleteHomework('${hw.id}')" class="text-slate-400 hover:text-slate-600 text-xs px-1">✕</button>` : ''}
+                ${canDelHw ? `<button onclick="deleteHomework('${hw.id}')" title="Ta bort" class="text-slate-400 hover:text-rose-600 text-xs px-1.5 py-1">✕</button>` : ''}
               </div>
             `;
           }).join('')}
@@ -540,6 +584,7 @@
       const isPending = ev.status === 'pending';
       const p = getPersonDisplay(ev.person);
       const cardBg = isPending ? 'bg-amber-50 border-amber-300 border-dashed' : (ev.is_dinner ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200');
+      const allowDelete = canDeleteEvent(ev);
 
       return `
         <div class="px-2.5 py-2 rounded-lg border flex justify-between items-center gap-2 ${cardBg}">
@@ -551,10 +596,10 @@
             </div>
             <p class="text-xs font-medium text-slate-800 mt-0.5 truncate">${ev.title}</p>
           </div>
-          ${isAdmin ? `
+          ${(isAdmin || allowDelete) ? `
             <div class="flex gap-1 shrink-0">
-              ${isPending ? `<button onclick="approveEvent('${ev.id}')" class="bg-emerald-600 text-white w-7 h-7 rounded-md font-bold text-xs shadow-xs">✓</button>` : ''}
-              <button onclick="deleteEvent('${ev.id}')" class="bg-white border border-slate-200 text-slate-500 w-7 h-7 rounded-md font-bold text-xs">✕</button>
+              ${(isAdmin && isPending) ? `<button onclick="approveEvent('${ev.id}')" title="Godkänn" class="bg-emerald-600 text-white w-7 h-7 rounded-md font-bold text-xs shadow-xs">✓</button>` : ''}
+              ${allowDelete ? `<button onclick="deleteEvent('${ev.id}')" title="Ta bort" class="bg-white border border-slate-200 text-slate-500 hover:text-rose-600 w-7 h-7 rounded-md font-bold text-xs">✕</button>` : ''}
             </div>
           ` : ''}
         </div>
@@ -698,7 +743,9 @@
     }
 
     function renderPersonSelectors() {
-      document.getElementById('person-buttons-event').innerHTML = Object.keys(avatars).map(p => `
+      // Både barn och vuxna kan välja sig själva eller "Alla"
+      const options = isAdmin ? ['Elsa', 'Nils', 'Pappa', 'Alla'] : [currentUser || 'Elsa', 'Alla'];
+      document.getElementById('person-buttons-event').innerHTML = options.map(p => `
         <button type="button" onclick="selectedPerson='${p}'; renderPersonSelectors();" class="border rounded-lg py-2 text-xs font-medium ${selectedPerson === p ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-600'}">
           ${avatars[p]} ${p}
         </button>
@@ -734,34 +781,48 @@
     }
 
     function openSheet(forcedIso = null, category = 'event') {
+      // Om ingen profil är vald på mobilen ännu, be dem välja sin profil först!
+      if (!currentUser) {
+        openProfilePicker();
+        return;
+      }
+      selectedPerson = currentUser;
       const iso = forcedIso || selectedDateIso;
       document.getElementById('input-date').value = iso;
       document.getElementById('dinner-date').value = iso;
       document.getElementById('hw-due').value = iso;
       setFormCategory(category);
+      renderPersonSelectors();
       document.getElementById('bottom-sheet').classList.remove('hidden');
     }
 
     function closeSheet() { document.getElementById('bottom-sheet').classList.add('hidden'); }
 
-    function openAvatarPicker() {
-      document.getElementById('avatar-config-list').innerHTML = Object.keys(avatars).map(person => `
-        <div class="border border-slate-200 rounded-xl p-2.5">
-          <div class="text-xs font-bold text-slate-700 mb-1.5">${person}: <span class="text-base">${avatars[person]}</span></div>
-          <div class="flex flex-wrap gap-1">
-            ${avatarChoices.map(emo => `
-              <button type="button" onclick="setAvatar('${person}', '${emo}')" class="w-7 h-7 rounded-lg text-base flex items-center justify-center ${avatars[person] === emo ? 'bg-indigo-100 ring-2 ring-indigo-500' : 'bg-slate-50 hover:bg-slate-100'}">${emo}</button>
-            `).join('')}
-          </div>
-        </div>
+    function openProfilePicker() {
+      const users = ['Elsa', 'Nils', 'Pappa'];
+      document.getElementById('active-user-selector').innerHTML = users.map(u => {
+        const active = currentUser === u;
+        return `
+          <button type="button" onclick="switchUser('${u}')" class="p-2.5 rounded-xl border text-center transition ${active ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-300' : 'bg-slate-50 border-slate-200'}">
+            <span class="text-2xl block">${avatars[u]}</span>
+            <span class="text-xs font-bold text-slate-800 block mt-1">${u}</span>
+          </button>
+        `;
+      }).join('');
+
+      const target = currentUser || 'Elsa';
+      document.getElementById('editing-avatar-name').textContent = target;
+      document.getElementById('avatar-emoji-grid').innerHTML = avatarChoices.map(emo => `
+        <button type="button" onclick="setAvatar('${target}', '${emo}')" class="w-8 h-8 rounded-lg text-base flex items-center justify-center ${avatars[target] === emo ? 'bg-indigo-100 ring-2 ring-indigo-500' : 'bg-slate-100 hover:bg-slate-200'}">${emo}</button>
       `).join('');
-      document.getElementById('avatar-modal').classList.remove('hidden');
+
+      document.getElementById('profile-modal').classList.remove('hidden');
     }
 
-    function closeAvatarPicker() { document.getElementById('avatar-modal').classList.add('hidden'); }
+    function closeProfilePicker() { document.getElementById('profile-modal').classList.add('hidden'); }
 
     // Starta appen
-    updateAdminUI();
+    updateUserUI();
     render();
     loadAllData();
     fetchSchoolLunch();
