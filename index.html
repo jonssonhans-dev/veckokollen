@@ -48,8 +48,8 @@
       </div>
 
       <!-- Statusrad (Barnens humör/status + Nedräknare) -->
-      <div id="status-bar" class="flex items-center justify-between gap-2 pt-1.5 mt-1 border-t border-black/5 text-[11px]">
-        <div id="family-moods" class="flex items-center gap-2 overflow-x-auto"></div>
+      <div id="status-bar" class="flex items-center justify-between gap-2 pt-1.5 mt-1 border-t border-black/10 text-[11px]">
+        <div id="family-moods" onclick="openProfilePicker()" class="flex items-center gap-1.5 overflow-x-auto cursor-pointer py-0.5"></div>
         <div id="countdown-pill" class="shrink-0"></div>
       </div>
 
@@ -376,7 +376,7 @@
             try { countdownConfig = JSON.parse(p.avatar); } catch(e) {}
           } else if (p.person.startsWith('_mood_')) {
             const name = p.person.replace('_mood_', '');
-            moods[name] = p.avatar;
+            moods[name] = (p.avatar === '-' ? '' : p.avatar);
           } else {
             avatars[p.person] = p.avatar;
           }
@@ -493,7 +493,9 @@
       moods[person] = moodEmoji;
       updateUserUI();
       openProfilePicker();
-      await db.from('profiles').upsert({ person: `_mood_${person}`, avatar: moodEmoji });
+      const valToSave = moodEmoji || '-';
+      const { error } = await db.from('profiles').upsert({ person: `_mood_${person}`, avatar: valToSave });
+      if (error) console.error('Kunde inte spara status:', error);
     }
 
     async function saveCountdown() {
@@ -565,10 +567,10 @@
 
       // Uppdatera humör-rad & nedräknare
       const moodRow = ['Elsa', 'Nils', 'Pappa']
-        .filter(u => moods[u])
-        .map(u => `<span class="bg-white/75 text-slate-800 px-2 py-0.5 rounded-full font-medium shrink-0">${avatars[u]} ${u}: ${moods[u]}</span>`)
+        .filter(u => moods[u] && moods[u] !== '-')
+        .map(u => `<span class="bg-white text-slate-900 border border-slate-200/80 px-2 py-0.5 rounded-full font-semibold shrink-0 shadow-2xs">${avatars[u] || '👤'} ${u} ${moods[u]}</span>`)
         .join('');
-      document.getElementById('family-moods').innerHTML = moodRow || `<span class="opacity-70">Tryck på din profil för humör/status</span>`;
+      document.getElementById('family-moods').innerHTML = moodRow || `<span class="bg-white/60 text-slate-700 px-2 py-0.5 rounded-full font-medium">+ Sätt dagens status</span>`;
 
       const cdEl = document.getElementById('countdown-pill');
       if (countdownConfig.title && countdownConfig.date) {
