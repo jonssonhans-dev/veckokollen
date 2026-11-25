@@ -1,6 +1,6 @@
 // api/lunch.js – Anpassad för Skolmaten.se:s exakta RSS-struktur
 const SCHOOLS = {
-  lyckeby: 'https://skolmaten.se/lyckebyskolan/rss/weeks/',
+  lyckeby: 'https://skolmaten.se/api/4/rss/week/hagaskolan2?locale=sv',
   haga: 'https://skolmaten.se/hagaskolan-haninge/rss/weeks/'
 };
 
