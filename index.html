@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Veckokollen</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-200 text-slate-800 font-sans pb-24">
+
+  <div id="app-container" class="max-w-md mx-auto min-h-screen bg-slate-50 shadow-xl flex flex-col transition-all">
+    
+    <!-- Dynamisk Väder-Header -->
+    <header id="weather-header" class="bg-gradient-to-br from-sky-200 via-sky-100 to-slate-50 px-4 pt-5 pb-3 border-b border-slate-200/80 sticky top-0 z-10 transition-colors duration-500">
+      <div class="flex justify-between items-start mb-2.5">
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold text-slate-900" id="header-title">Veckokollen</h1>
+            <div id="current-weather-badge" class="flex items-center gap-1.5 bg-white/80 backdrop-blur-xs border border-white/60 text-slate-800 px-2.5 py-0.5 rounded-full text-xs font-semibold shadow-2xs">
+              <span>⏳</span><span>Haninge...</span>
+            </div>
+          </div>
+          <p class="text-xs text-slate-600 mt-0.5 font-medium" id="header-subtitle">Laddar vecka...</p>
+        </div>
+        
+        <div class="flex items-center gap-1.5">
+          <button onclick="openAvatarPicker()" title="Byt avatar" class="text-xs font-semibold px-2 py-1.5 rounded-full border bg-white/80 border-slate-200 shadow-2xs">🎭</button>
+          <button id="weekend-btn" onclick="selectWeekendView()" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-indigo-700 border-indigo-200 shadow-2xs">🎉 Helg</button>
+          <button id="admin-btn" onclick="toggleAdmin()" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-slate-700 border-slate-300 shadow-2xs">🔒 Barn</button>
+        </div>
+      </div>
+
+      <!-- Dagväljare (Barnläge) -->
+      <div id="day-tabs" class="grid grid-cols-7 gap-1 py-1"></div>
+    </header>
+
+    <!-- Huvudinnehåll -->
+    <main id="main-content" class="p-3.5 space-y-4 flex-1"></main>
+
+    <!-- Flytande + knapp -->
+    <div class="fixed bottom-5 right-5 left-0 max-w-lg mx-auto px-5 flex justify-end pointer-events-none">
+      <button onclick="openSheet()" class="pointer-events-auto bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold transition">+</button>
+    </div>
+  </div>
+
+  <!-- Bottom Sheet -->
+  <div id="bottom-sheet" class="hidden fixed inset-0 bg-black/50 z-20 flex items-end justify-center">
+    <div class="bg-white w-full max-w-lg rounded-t-3xl p-6 shadow-2xl">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold">Lägg till</h3>
+        <button onclick="closeSheet()" class="text-slate-400 text-xl font-bold px-2">✕</button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl mb-4">
+        <button type="button" id="tab-type-event" onclick="setFormCategory('event')" class="py-1.5 text-xs font-bold rounded-lg bg-white shadow-xs text-slate-900">📅 Aktivitet</button>
+        <button type="button" id="tab-type-dinner" onclick="setFormCategory('dinner')" class="py-1.5 text-xs font-bold rounded-lg text-slate-500">🍽️ Middag</button>
+        <button type="button" id="tab-type-homework" onclick="setFormCategory('homework')" class="py-1.5 text-xs font-bold rounded-lg text-slate-500">📚 Läxa/Prov</button>
+      </div>
+
+      <!-- Formulär 1: Aktivitet -->
+      <form id="event-form" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Gäller vem?</label>
+          <div class="grid grid-cols-4 gap-2" id="person-buttons-event"></div>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" onclick="quickFill('event', 'Ta med kompis hem')" class="text-xs bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">🏠 Kompis hem</button>
+          <button type="button" onclick="quickFill('event', 'Leka hos kompis')" class="text-xs bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">👋 Hos kompis</button>
+          <button type="button" onclick="quickFill('event', 'Spelstund')" class="text-xs bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">🎮 Spelstund</button>
+        </div>
+        <div>
+          <input type="text" id="input-title" required placeholder="Vad händer?" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Datum</label>
+            <input type="date" id="input-date" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Tid (valfritt)</label>
+            <input type="time" id="input-time" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm">
+          </div>
+        </div>
+        <button type="submit" id="submit-btn" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-xl shadow-md">Skicka förslag</button>
+      </form>
+
+      <!-- Formulär 2: Middag -->
+      <form id="dinner-form" class="hidden space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Datum</label>
+          <input type="date" id="dinner-date" onchange="updateSmartDinnerSuggestions()" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
+        </div>
+        <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3">
+          <div class="flex justify-between items-center mb-1.5">
+            <span class="text-[11px] font-bold text-amber-900">✨ Smarta förslag (utifrån skollunchen)</span>
+            <button type="button" onclick="updateSmartDinnerSuggestions(true)" class="text-[11px] font-bold text-indigo-600">↻ Nya tips</button>
+          </div>
+          <p id="lunch-context-hint" class="text-[11px] text-slate-600 mb-2"></p>
+          <div id="smart-dinner-chips" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <input type="text" id="dinner-title" required placeholder="Välj ett tips ovan eller skriv middagsrätt..." class="w-full border border-slate-300 rounded-xl p-2.5 text-sm">
+        <button type="submit" id="dinner-submit-btn" class="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl shadow-md">Önska middag</button>
+      </form>
+
+      <!-- Formulär 3: Läxa / Prov -->
+      <form id="homework-form" class="hidden space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Vems läxa / prov?</label>
+          <div class="grid grid-cols-2 gap-2" id="person-buttons-hw"></div>
+        </div>
+        <input type="text" id="hw-title" required placeholder="Ämne / Vad ska göras?" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Typ</label>
+            <select id="hw-type" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
+              <option value="weekly">Veckoläxa</option>
+              <option value="exam">Prov / Inlämning</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Klar senast</label>
+            <input type="date" id="hw-due" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
+          </div>
+        </div>
+        <button type="submit" class="w-full bg-rose-600 text-white font-semibold py-3 rounded-xl shadow-md">Lägg i pluggradarn</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Avatar-väljare -->
+  <div id="avatar-modal" class="hidden fixed inset-0 bg-black/50 z-30 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-base font-bold">Välj era avatarer</h3>
+        <button onclick="closeAvatarPicker()" class="text-slate-400 font-bold">✕</button>
+      </div>
+      <div id="avatar-config-list" class="space-y-3"></div>
+      <button onclick="closeAvatarPicker()" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-xl mt-4 text-sm">Klar</button>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. SUPABASE-KONFIGURATION (FÄRDIGIFLLD)
+    // ==========================================
+    const SUPABASE_URL = 'https://stymtfwmdhkiaruzqllo.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_65AIXWtnRB3tMkLJAHsjLw_X92O1cXP';
+    const ADMIN_PIN = '1234'; // Byt till din egen 4-siffriga PIN om du vill
+
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // State
+    let isAdmin = localStorage.getItem('veckokollen_admin') === 'true';
+    let isHomeworkOpen = true;
+    let viewMode = 'day';
+    let selectedPerson = 'Elsa';
+    let selectedHwPerson = 'Elsa';
+
+    let avatars = { Elsa: '🦊', Nils: '🚀', Pappa: '☕', Alla: '🏠' };
+    const avatarChoices = ['🦊', '🐱', '🦄', '⚽', '🎨', '🚀', '🦖', '🎮', '🚴', '☕', '🎸', '🌟'];
+
+    let events = [];
+    let homeworks = [];
+    let schoolMenus = { lyckeby: {}, haga: {} };
+
+    function buildCurrentWeek() {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+
+      const names = [
+        { short: 'Mån', full: 'Måndag' },
+        { short: 'Tis', full: 'Tisdag' },
+        { short: 'Ons', full: 'Onsdag' },
+        { short: 'Tor', full: 'Torsdag' },
+        { short: 'Fre', full: 'Fredag' },
+        { short: 'Lör', full: 'Lördag' },
+        { short: 'Sön', full: 'Söndag' }
+      ];
+
+      const months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+
+      return names.map((n, i) => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const iso = d.toISOString().split('T')[0];
+        return {
+          ...n,
+          iso,
+          dateLabel: `${d.getDate()} ${months[d.getMonth()]}`,
+          isWeekend: i >= 5,
+          isToday: iso === now.toISOString().split('T')[0],
+          weather: null
+        };
+      });
+    }
+
+    const weekDays = buildCurrentWeek();
+    let selectedDateIso = weekDays.find(d => d.isToday)?.iso || weekDays[0].iso;
+
+    const dinnerCatalog = [
+      { title: "🌮 Tacos med tillbehör", tags: ["taco", "färs"] },
+      { title: "🍝 Pasta Carbonara", tags: ["pasta", "spaghetti", "makaron"] },
+      { title: "🍗 Ugnsrostad kyckling & klyftpotatis", tags: ["kyckling"] },
+      { title: "🐟 Lax i ugn med potatis & kall sås", tags: ["fisk", "lax", "torsk", "sej"] },
+      { title: "🥞 Pannkakor med sylt & grädde", tags: ["pannkak", "soppa"] },
+      { title: "🍔 Hemmagjorda hamburgare", tags: ["färs", "burgare"] },
+      { title: "🍛 Korv stroganoff med ris", tags: ["korv", "ris"] },
+      { title: "🍕 Hemmagjord pizza", tags: ["pizza"] },
+      { title: "🥩 Köttbullar & makaroner", tags: ["köttbull", "färs", "pasta"] },
+      { title: "🍜 Wok med nudlar & grönsaker", tags: ["nudlar", "wok"] },
+      { title: "🥔 Pyttipanna med stekt ägg", tags: ["pytt"] },
+      { title: "🌯 Kycklingfajitas", tags: ["kyckling", "taco"] }
+    ];
+
+    async function loadAllData() {
+      const [evRes, hwRes, profRes] = await Promise.all([
+        db.from('events').select('*').gte('event_date', weekDays[0].iso).lte('event_date', weekDays[6].iso),
+        db.from('homeworks').select('*').order('due_date', { ascending: true }),
+        db.from('profiles').select('*')
+      ]);
+
+      if (evRes.data) events = evRes.data;
+      if (hwRes.data) homeworks = hwRes.data;
+      if (profRes.data) {
+        profRes.data.forEach(p => { avatars[p.person] = p.avatar; });
+      }
+      render();
+    }
+
+    async function fetchSchoolLunch() {
+      try {
+        const res = await fetch('/api/lunch');
+        if (res.ok) {
+          schoolMenus = await res.json();
+          render();
+        }
+      } catch (e) {
+        console.warn('Kunde inte hämta skolmat:', e);
+      }
+    }
+
+    function interpretWeatherCode(code) {
+      if (code === 0) return { icon: "☀️", text: "Klart" };
+      if (code <= 3) return { icon: "⛅", text: "Halvklart" };
+      if (code <= 48) return { icon: "🌫️", text: "Dimma" };
+      if (code <= 67) return { icon: "🌧️", text: "Regn" };
+      if (code <= 77) return { icon: "❄️", text: "Snö" };
+      if (code <= 82) return { icon: "🌦️", text: "Regnskurar" };
+      return { icon: "🌨️", text: "Snöbyar" };
+    }
+
+    function getClothingTip(temp, precipProb, code) {
+      if (code >= 51 && code <= 67 || precipProb > 55) return "☔ Regnkläder";
+      if (temp <= 0) return "🧤 Overall / Vinterjacka";
+      if (temp <= 8) return "🧥 Vinterjacka";
+      if (temp <= 15) return "🧥 Skaljacka";
+      return "👕 T-shirt / Tröja";
+    }
+
+    async function fetchHaningeWeather() {
+      try {
+        const url = "https://api.open-meteo.com/v1/forecast?latitude=59.167&longitude=18.145&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FStockholm&forecast_days=10";
+        const res = await fetch(url);
+        const data = await res.json();
+
+        const currTemp = Math.round(data.current.temperature_2m);
+        const currCode = data.current.weather_code;
+        const currInfo = interpretWeatherCode(currCode);
+        const clothTip = getClothingTip(currTemp, 0, currCode);
+
+        const hour = new Date().getHours();
+        const header = document.getElementById('weather-header');
+        const title = document.getElementById('header-title');
+        const sub = document.getElementById('header-subtitle');
+
+        if (hour >= 19 || hour < 6) {
+          header.className = "bg-gradient-to-br from-slate-800 via-indigo-950 to-slate-900 px-4 pt-5 pb-3 border-b border-slate-700 sticky top-0 z-10";
+          title.classList.replace('text-slate-900', 'text-white');
+          sub.classList.replace('text-slate-600', 'text-slate-300');
+        } else if (currCode >= 51) {
+          header.className = "bg-gradient-to-br from-slate-300 via-sky-200 to-slate-100 px-4 pt-5 pb-3 border-b border-slate-200 sticky top-0 z-10";
+        } else if (currCode === 0) {
+          header.className = "bg-gradient-to-br from-amber-100 via-sky-100 to-slate-50 px-4 pt-5 pb-3 border-b border-slate-200 sticky top-0 z-10";
+        }
+
+        document.getElementById('current-weather-badge').innerHTML = `<span>${currInfo.icon}</span><span>${currTemp}°C • ${clothTip}</span>`;
+
+        data.daily.time.forEach((dateStr, i) => {
+          const dayObj = weekDays.find(d => d.iso === dateStr);
+          if (dayObj) {
+            const info = interpretWeatherCode(data.daily.weather_code[i]);
+            const maxT = Math.round(data.daily.temperature_2m_max[i]);
+            const minT = Math.round(data.daily.temperature_2m_min[i]);
+            const precip = data.daily.precipitation_probability_max[i];
+            dayObj.weather = {
+              icon: info.icon,
+              tempRange: `${minT}° / ${maxT}°`,
+              precip: precip > 25 ? `• ${precip}%` : ""
+            };
+          }
+        });
+        render();
+      } catch (err) {
+        console.warn('Väderfel:', err);
+      }
+    }
+
+    function toggleAdmin() {
+      if (!isAdmin) {
+        const pin = prompt("Ange föräldra-PIN:");
+        if (pin !== ADMIN_PIN) return alert("Fel PIN-kod");
+        isAdmin = true;
+        localStorage.setItem('veckokollen_admin', 'true');
+      } else {
+        isAdmin = false;
+        localStorage.removeItem('veckokollen_admin');
+      }
+      updateAdminUI();
+      render();
+    }
+
+    function updateAdminUI() {
+      const btn = document.getElementById('admin-btn');
+      const submitBtn = document.getElementById('submit-btn');
+      const dinnerSubmitBtn = document.getElementById('dinner-submit-btn');
+      const container = document.getElementById('app-container');
+      const weekendBtn = document.getElementById('weekend-btn');
+      const dayTabs = document.getElementById('day-tabs');
+
+      if (isAdmin) {
+        btn.textContent = "🔓 Förälder";
+        btn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-amber-100 text-amber-900 border-amber-300 shadow-2xs";
+        submitBtn.textContent = "Lägg in i schemat";
+        dinnerSubmitBtn.textContent = "Spika middag";
+        container.classList.replace('max-w-md', 'max-w-lg');
+        weekendBtn.classList.add('hidden');
+        dayTabs.classList.add('hidden');
+      } else {
+        btn.textContent = "🔒 Barn";
+        btn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-slate-700 border-slate-300 shadow-2xs";
+        submitBtn.textContent = "Skicka förslag";
+        dinnerSubmitBtn.textContent = "Önska middag";
+        container.classList.replace('max-w-lg', 'max-w-md');
+        weekendBtn.classList.remove('hidden');
+        dayTabs.classList.remove('hidden');
+      }
+    }
+
+    let dinnerOffset = 0;
+    function updateSmartDinnerSuggestions(shuffle = false) {
+      if (shuffle) dinnerOffset += 4;
+      const iso = document.getElementById('dinner-date').value;
+      const lyckebyFood = (schoolMenus.lyckeby[iso] || '').toLowerCase();
+      const hagaFood = (schoolMenus.haga[iso] || '').toLowerCase();
+      const combinedLunch = `${lyckebyFood} ${hagaFood}`;
+
+      const suitable = dinnerCatalog.filter(meal => !meal.tags.some(tag => combinedLunch.includes(tag)));
+      const list = suitable.length ? suitable : dinnerCatalog;
+
+      const picks = [];
+      for (let i = 0; i < 4; i++) {
+        picks.push(list[(dinnerOffset + i) % list.length]);
+      }
+
+      document.getElementById('lunch-context-hint').textContent = combinedLunch.trim()
+        ? `Skolmat denna dag: ${schoolMenus.lyckeby[iso] || '-'} / ${schoolMenus.haga[iso] || '-'}`
+        : "Inga skolluncher registrerade denna dag.";
+
+      document.getElementById('smart-dinner-chips').innerHTML = picks.map(p => `
+        <button type="button" onclick="quickFill('dinner', '${p.title}')" class="text-xs bg-white hover:bg-emerald-50 text-slate-800 px-2.5 py-1.5 rounded-lg border border-amber-300 shadow-2xs font-medium">
+          ${p.title}
+        </button>
+      `).join('');
+    }
+
+    async function setAvatar(person, emo) {
+      avatars[person] = emo;
+      openAvatarPicker();
+      render();
+      await db.from('profiles').upsert({ person, avatar: emo });
+    }
+
+    document.getElementById('event-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newEv = {
+        event_date: document.getElementById('input-date').value,
+        start_time: document.getElementById('input-time').value || null,
+        person: selectedPerson,
+        title: document.getElementById('input-title').value,
+        status: isAdmin ? 'confirmed' : 'pending',
+        is_dinner: false
+      };
+      e.target.reset();
+      closeSheet();
+      const { data } = await db.from('events').insert([newEv]).select();
+      if (data) { events.push(data[0]); render(); }
+    });
+
+    document.getElementById('dinner-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newEv = {
+        event_date: document.getElementById('dinner-date').value,
+        start_time: null,
+        person: isAdmin ? 'Alla' : selectedPerson,
+        title: `Middag: ${document.getElementById('dinner-title').value}`,
+        status: isAdmin ? 'confirmed' : 'pending',
+        is_dinner: true
+      };
+      e.target.reset();
+      closeSheet();
+      const { data } = await db.from('events').insert([newEv]).select();
+      if (data) { events.push(data[0]); render(); }
+    });
+
+    document.getElementById('homework-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newHw = {
+        person: selectedHwPerson,
+        title: document.getElementById('hw-title').value,
+        hw_type: document.getElementById('hw-type').value,
+        due_date: document.getElementById('hw-due').value,
+        done: false
+      };
+      e.target.reset();
+      closeSheet();
+      const { data } = await db.from('homeworks').insert([newHw]).select();
+      if (data) { homeworks.push(data[0]); render(); }
+    });
+
+    async function toggleHomework(id) {
+      const hw = homeworks.find(h => h.id === id);
+      if (!hw) return;
+      hw.done = !hw.done;
+      render();
+      await db.from('homeworks').update({ done: hw.done }).eq('id', id);
+    }
+
+    async function deleteHomework(id) {
+      homeworks = homeworks.filter(h => h.id !== id);
+      render();
+      await db.from('homeworks').delete().eq('id', id);
+    }
+
+    async function approveEvent(id) {
+      const ev = events.find(e => e.id === id);
+      if (!ev) return;
+      ev.status = 'confirmed';
+      render();
+      await db.from('events').update({ status: 'confirmed' }).eq('id', id);
+    }
+
+    async function deleteEvent(id) {
+      events = events.filter(e => e.id !== id);
+      render();
+      await db.from('events').delete().eq('id', id);
+    }
+
+    function getPersonDisplay(person) {
+      const emo = avatars[person] || '👤';
+      if (person === 'Elsa') return { label: `${emo} Elsa`, cls: 'bg-indigo-100 text-indigo-700' };
+      if (person === 'Nils') return { label: `${emo} Nils`, cls: 'bg-emerald-100 text-emerald-700' };
+      if (person === 'Pappa') return { label: `${emo} Pappa`, cls: 'bg-slate-200 text-slate-700' };
+      return { label: `${emo} Alla`, cls: 'bg-purple-100 text-purple-700' };
+    }
+
+    function formatDueDate(iso) {
+      const d = new Date(iso);
+      const days = ['Sön', 'Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör'];
+      const isNextWeek = iso > weekDays[6].iso;
+      return {
+        text: `${isNextWeek ? 'Nästa ' : ''}${days[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`,
+        isNextWeek
+      };
+    }
+
+    function renderHomeworkRadar() {
+      const openTasks = homeworks.filter(h => !h.done);
+      const allDone = homeworks.length > 0 && openTasks.length === 0;
+
+      const statusBadge = allDone
+        ? `<span class="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">Allt klart! 🎉</span>`
+        : `<span class="text-[11px] font-bold bg-rose-200/80 text-rose-900 px-2 py-0.5 rounded-full">${openTasks.length} kvar</span>`;
+
+      const listHtml = isHomeworkOpen ? `
+        <div class="space-y-1.5 mt-2.5 pt-2 border-t border-rose-200/60">
+          ${homeworks.length === 0 ? `<p class="text-xs text-slate-500 italic">Inga läxor eller prov inlagda.</p>` : ''}
+          ${homeworks.map(hw => {
+            const p = getPersonDisplay(hw.person);
+            const due = formatDueDate(hw.due_date);
+            return `
+              <div class="flex items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border ${hw.done ? 'border-slate-100 opacity-60' : 'border-rose-100'}">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <input type="checkbox" ${hw.done ? 'checked' : ''} onchange="toggleHomework('${hw.id}')" class="w-4 h-4 rounded accent-rose-600 shrink-0 cursor-pointer">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${p.cls}">${p.label}</span>
+                      <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${hw.hw_type === 'exam' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'}">
+                        ${hw.hw_type === 'exam' ? '🎯 Prov' : '🔄 Veckoläxa'}
+                      </span>
+                      <span class="text-[11px] font-semibold ${due.isNextWeek ? 'text-amber-700' : 'text-slate-500'}">→ ${due.text}</span>
+                    </div>
+                    <p class="text-xs font-medium text-slate-800 mt-0.5 truncate ${hw.done ? 'line-through' : ''}">${hw.title}</p>
+                  </div>
+                </div>
+                ${isAdmin ? `<button onclick="deleteHomework('${hw.id}')" class="text-slate-400 hover:text-slate-600 text-xs px-1">✕</button>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : '';
+
+      return `
+        <section class="${allDone ? 'bg-emerald-50/70 border-emerald-200' : 'bg-rose-50/80 border-rose-200'} border rounded-xl p-3 shadow-xs transition-colors">
+          <div class="flex justify-between items-center">
+            <button onclick="isHomeworkOpen = !isHomeworkOpen; render();" class="flex items-center gap-2 text-left flex-1">
+              <span class="text-xs font-bold text-slate-500 w-3">${isHomeworkOpen ? '▾' : '▸'}</span>
+              <span class="text-xs font-bold uppercase tracking-wider ${allDone ? 'text-emerald-900' : 'text-rose-900'}">📚 Pluggradar</span>
+              ${statusBadge}
+            </button>
+            <button onclick="openSheet(null, 'homework')" class="text-[11px] font-bold text-rose-700 bg-white border border-rose-200 px-2 py-0.5 rounded-md shadow-2xs">+ Läxa/Prov</button>
+          </div>
+          ${listHtml}
+        </section>
+      `;
+    }
+
+    function renderWeatherPill(w) {
+      if (!w) return '';
+      return `<span class="text-[11px] font-medium text-sky-800 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100">${w.icon} ${w.tempRange} ${w.precip}</span>`;
+    }
+
+    function renderCompactEvent(ev) {
+      const isPending = ev.status === 'pending';
+      const p = getPersonDisplay(ev.person);
+      const cardBg = isPending ? 'bg-amber-50 border-amber-300 border-dashed' : (ev.is_dinner ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200');
+
+      return `
+        <div class="px-2.5 py-2 rounded-lg border flex justify-between items-center gap-2 ${cardBg}">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${p.cls}">${p.label}</span>
+              ${ev.start_time ? `<span class="text-[11px] font-semibold text-slate-500">${ev.start_time}</span>` : ''}
+              ${isPending ? `<span class="text-[10px] font-bold text-amber-700 uppercase">Förslag</span>` : ''}
+            </div>
+            <p class="text-xs font-medium text-slate-800 mt-0.5 truncate">${ev.title}</p>
+          </div>
+          ${isAdmin ? `
+            <div class="flex gap-1 shrink-0">
+              ${isPending ? `<button onclick="approveEvent('${ev.id}')" class="bg-emerald-600 text-white w-7 h-7 rounded-md font-bold text-xs shadow-xs">✓</button>` : ''}
+              <button onclick="deleteEvent('${ev.id}')" class="bg-white border border-slate-200 text-slate-500 w-7 h-7 rounded-md font-bold text-xs">✕</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderParentOverview() {
+      const pendingCount = events.filter(e => e.status === 'pending').length;
+      document.getElementById('header-subtitle').textContent = pendingCount > 0 ? `${pendingCount} väntande förslag • Veckoöversikt` : "Full veckoöversikt";
+      const main = document.getElementById('main-content');
+
+      const weekdaysHtml = weekDays.slice(0, 5).map(d => {
+        const dayEvents = events.filter(e => e.event_date === d.iso).sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
+        const lyckebyFood = schoolMenus.lyckeby[d.iso] || 'Ingen meny inlagd';
+        const hagaFood = schoolMenus.haga[d.iso] || 'Ingen meny inlagd';
+
+        return `
+          <div class="bg-white rounded-xl p-3 border ${d.isToday ? 'border-indigo-400 ring-1 ring-indigo-100' : 'border-slate-200'} shadow-xs">
+            <div class="flex justify-between items-center mb-1.5 gap-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="font-bold text-sm text-slate-900">${d.full}</span>
+                <span class="text-xs text-slate-400">${d.dateLabel}</span>
+                ${renderWeatherPill(d.weather)}
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <button onclick="openSheet('${d.iso}', 'dinner')" class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">✨ Middag</button>
+                <button onclick="openSheet('${d.iso}', 'event')" class="text-xs font-semibold text-indigo-600 px-1.5 py-0.5 rounded">+</button>
+              </div>
+            </div>
+            <div class="text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg mb-2 flex flex-col gap-0.5">
+              <div><span class="font-semibold text-indigo-600">${avatars.Elsa} Lyckeby:</span> ${lyckebyFood}</div>
+              <div><span class="font-semibold text-emerald-600">${avatars.Nils} Haga:</span> ${hagaFood}</div>
+            </div>
+            <div class="space-y-1.5">
+              ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<p class="text-[11px] text-slate-400 italic px-1">Inga aktiviteter</p>`}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const weekendHtml = `
+        <div class="pt-1">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-2">🎉 Helgen (Lördag & Söndag)</h2>
+          <div class="grid grid-cols-2 gap-2.5">
+            ${weekDays.slice(5, 7).map(d => {
+              const dayEvents = events.filter(e => e.event_date === d.iso).sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
+              return `
+                <div class="bg-white rounded-xl p-2.5 border border-indigo-200 shadow-xs flex flex-col justify-between">
+                  <div>
+                    <div class="flex justify-between items-start mb-1.5 pb-1.5 border-b border-slate-100">
+                      <div>
+                        <span class="font-bold text-xs text-slate-900 block">${d.full} ${d.dateLabel}</span>
+                        <div class="mt-1">${renderWeatherPill(d.weather)}</div>
+                      </div>
+                      <button onclick="openSheet('${d.iso}', 'event')" class="text-xs font-bold text-indigo-600 bg-indigo-50 w-6 h-6 rounded-md shrink-0">+</button>
+                    </div>
+                    <div class="space-y-1.5">
+                      ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<p class="text-[11px] text-slate-400 italic">Ledigt</p>`}
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+
+      main.innerHTML = renderHomeworkRadar() + weekdaysHtml + weekendHtml;
+    }
+
+    function renderChildView() {
+      const tabs = document.getElementById('day-tabs');
+      tabs.innerHTML = weekDays.map(d => {
+        const hasPending = events.some(e => e.event_date === d.iso && e.status === 'pending');
+        const isSelected = (viewMode === 'day' && d.iso === selectedDateIso) || (viewMode === 'weekend' && d.isWeekend);
+        let baseStyle = d.isWeekend ? 'bg-white/70 text-indigo-900 border border-indigo-100' : 'bg-white/70 text-slate-700';
+        if (isSelected) baseStyle = 'bg-indigo-600 text-white shadow-sm';
+
+        return `
+          <button onclick="viewMode='day'; selectedDateIso='${d.iso}'; render();" class="relative flex flex-col items-center py-2 rounded-xl text-xs font-semibold transition ${baseStyle}">
+            <span>${d.short}</span>
+            <span class="text-[10px] opacity-80 mt-0.5">${d.weather ? d.weather.icon : d.dateLabel.split(' ')[0]}</span>
+            ${hasPending ? `<span class="absolute top-1 right-1 w-2 h-2 rounded-full ${isSelected ? 'bg-amber-300' : 'bg-amber-500'}"></span>` : ''}
+          </button>
+        `;
+      }).join('');
+
+      const main = document.getElementById('main-content');
+      const currentDay = weekDays.find(d => d.iso === selectedDateIso) || weekDays[0];
+      document.getElementById('header-subtitle').textContent = viewMode === 'weekend' ? "Helgöversikt" : `${currentDay.full} ${currentDay.dateLabel}`;
+
+      if (viewMode === 'weekend') {
+        const weekendCards = weekDays.slice(5, 7).map(d => {
+          const dayEvents = events.filter(e => e.event_date === d.iso).sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
+          return `
+            <section class="space-y-2">
+              <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                  <h2 class="text-sm font-bold text-slate-800">${d.full} ${d.dateLabel}</h2>
+                  ${renderWeatherPill(d.weather)}
+                </div>
+                <button onclick="openSheet('${d.iso}', 'event')" class="text-xs font-semibold text-indigo-600">+ Föreslå</button>
+              </div>
+              ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<div class="text-center py-4 text-xs text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">Inget planerat ännu</div>`}
+            </section>
+          `;
+        }).join('');
+        main.innerHTML = renderHomeworkRadar() + weekendCards;
+      } else {
+        const dayEvents = events.filter(e => e.event_date === currentDay.iso).sort((a, b) => (a.start_time || "99:99").localeCompare(b.start_time || "99:99"));
+        const schoolFoodHtml = !currentDay.isWeekend ? `
+          <section>
+            <div class="flex justify-between items-center mb-2">
+              <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">🍽️ Skolmaten idag</h2>
+              <button onclick="openSheet('${currentDay.iso}', 'dinner')" class="text-[11px] font-bold text-emerald-700">+ Önska middag</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                <span class="text-[11px] font-bold text-indigo-600 block">${avatars.Elsa} Lyckebyskolan</span>
+                <p class="text-xs text-slate-700 mt-1">${schoolMenus.lyckeby[currentDay.iso] || 'Ingen meny'}</p>
+              </div>
+              <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                <span class="text-[11px] font-bold text-emerald-600 block">${avatars.Nils} Hagaskolan</span>
+                <p class="text-xs text-slate-700 mt-1">${schoolMenus.haga[currentDay.iso] || 'Ingen meny'}</p>
+              </div>
+            </div>
+          </section>
+        ` : '';
+
+        main.innerHTML = `
+          ${renderHomeworkRadar()}
+          ${schoolFoodHtml}
+          <section>
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">📅 Planering & Förslag</h2>
+            <div class="space-y-2">
+              ${dayEvents.length ? dayEvents.map(renderCompactEvent).join('') : `<div class="text-center py-6 text-xs text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">Inget inplanerat denna dag</div>`}
+            </div>
+          </section>
+        `;
+      }
+    }
+
+    function renderPersonSelectors() {
+      document.getElementById('person-buttons-event').innerHTML = Object.keys(avatars).map(p => `
+        <button type="button" onclick="selectedPerson='${p}'; renderPersonSelectors();" class="border rounded-lg py-2 text-xs font-medium ${selectedPerson === p ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-600'}">
+          ${avatars[p]} ${p}
+        </button>
+      `).join('');
+
+      document.getElementById('person-buttons-hw').innerHTML = ['Elsa', 'Nils'].map(p => `
+        <button type="button" onclick="selectedHwPerson='${p}'; renderPersonSelectors();" class="border rounded-lg py-2 text-xs font-medium ${selectedHwPerson === p ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-600'}">
+          ${avatars[p]} ${p}
+        </button>
+      `).join('');
+    }
+
+    function render() {
+      renderPersonSelectors();
+      if (isAdmin) renderParentOverview();
+      else renderChildView();
+    }
+
+    function selectWeekendView() { viewMode = 'weekend'; selectedDateIso = weekDays[5].iso; render(); }
+    function quickFill(target, text) {
+      if (target === 'event') document.getElementById('input-title').value = text;
+      if (target === 'dinner') document.getElementById('dinner-title').value = text;
+    }
+
+    function setFormCategory(cat) {
+      document.getElementById('event-form').classList.toggle('hidden', cat !== 'event');
+      document.getElementById('dinner-form').classList.toggle('hidden', cat !== 'dinner');
+      document.getElementById('homework-form').classList.toggle('hidden', cat !== 'homework');
+      document.getElementById('tab-type-event').className = cat === 'event' ? "py-1.5 text-xs font-bold rounded-lg bg-white shadow-xs text-slate-900" : "py-1.5 text-xs font-bold rounded-lg text-slate-500";
+      document.getElementById('tab-type-dinner').className = cat === 'dinner' ? "py-1.5 text-xs font-bold rounded-lg bg-white shadow-xs text-emerald-700" : "py-1.5 text-xs font-bold rounded-lg text-slate-500";
+      document.getElementById('tab-type-homework').className = cat === 'homework' ? "py-1.5 text-xs font-bold rounded-lg bg-white shadow-xs text-rose-700" : "py-1.5 text-xs font-bold rounded-lg text-slate-500";
+      if (cat === 'dinner') updateSmartDinnerSuggestions();
+    }
+
+    function openSheet(forcedIso = null, category = 'event') {
+      const iso = forcedIso || selectedDateIso;
+      document.getElementById('input-date').value = iso;
+      document.getElementById('dinner-date').value = iso;
+      document.getElementById('hw-due').value = iso;
+      setFormCategory(category);
+      document.getElementById('bottom-sheet').classList.remove('hidden');
+    }
+
+    function closeSheet() { document.getElementById('bottom-sheet').classList.add('hidden'); }
+
+    function openAvatarPicker() {
+      document.getElementById('avatar-config-list').innerHTML = Object.keys(avatars).map(person => `
+        <div class="border border-slate-200 rounded-xl p-2.5">
+          <div class="text-xs font-bold text-slate-700 mb-1.5">${person}: <span class="text-base">${avatars[person]}</span></div>
+          <div class="flex flex-wrap gap-1">
+            ${avatarChoices.map(emo => `
+              <button type="button" onclick="setAvatar('${person}', '${emo}')" class="w-7 h-7 rounded-lg text-base flex items-center justify-center ${avatars[person] === emo ? 'bg-indigo-100 ring-2 ring-indigo-500' : 'bg-slate-50 hover:bg-slate-100'}">${emo}</button>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+      document.getElementById('avatar-modal').classList.remove('hidden');
+    }
+
+    function closeAvatarPicker() { document.getElementById('avatar-modal').classList.add('hidden'); }
+
+    // Starta appen
+    updateAdminUI();
+    render();
+    loadAllData();
+    fetchSchoolLunch();
+    fetchHaningeWeather();
+  </script>
+</body>
+</html>
