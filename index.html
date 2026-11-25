@@ -25,7 +25,7 @@
             </div>
           </div>
           
-          <!-- Veckorad: Barn ser bara V.XX, Förälder ser även Barnvecka/Egen vecka + veckoväxlare -->
+          <!-- Veckorad -->
           <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
             <div id="week-nav-controls" class="hidden flex items-center gap-1 bg-white/80 border border-slate-200 rounded-full px-1.5 py-0.5 shadow-2xs">
               <button onclick="changeWeek(-1)" class="text-xs font-bold text-slate-600 px-1.5 hover:text-indigo-600">◀</button>
@@ -40,16 +40,19 @@
         </div>
         
         <div class="flex items-center gap-1.5 shrink-0">
-          <button onclick="openProfilePicker()" id="user-badge-btn" title="Välj användare, avatar & status" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1">
+          <button onclick="openProfilePicker()" id="user-badge-btn" title="Välj användare & avatar" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1">
             <span>👤</span><span>Välj profil</span>
           </button>
           <button id="weekend-btn" onclick="selectWeekendView()" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-indigo-700 border-indigo-200 shadow-2xs">🎉 Helg</button>
         </div>
       </div>
 
-      <!-- Statusrad (Barnens humör/status + Nedräknare) -->
+      <!-- Statusrad (Klickbar för att sätta dagens status direkt + Nedräknare) -->
       <div id="status-bar" class="flex items-center justify-between gap-2 pt-1.5 mt-1 border-t border-black/10 text-[11px]">
-        <div id="family-moods" onclick="openProfilePicker()" class="flex items-center gap-1.5 overflow-x-auto cursor-pointer py-0.5"></div>
+        <div class="flex items-center gap-1.5 overflow-x-auto py-0.5">
+          <button type="button" onclick="openMoodPicker()" class="bg-white/90 hover:bg-white text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-bold shrink-0 shadow-2xs">+ Status</button>
+          <div id="family-moods" onclick="openMoodPicker()" class="flex items-center gap-1.5 cursor-pointer"></div>
+        </div>
         <div id="countdown-pill" class="shrink-0"></div>
       </div>
 
@@ -66,7 +69,7 @@
     </div>
   </div>
 
-  <!-- Bottom Sheet -->
+  <!-- Bottom Sheet: Lägg till -->
   <div id="bottom-sheet" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
     <div class="bg-white w-full max-w-lg rounded-t-3xl p-6 shadow-2xl">
       <div class="flex justify-between items-center mb-4">
@@ -86,10 +89,7 @@
           <label class="block text-xs font-semibold text-slate-500 mb-1">Gäller vem?</label>
           <div class="grid grid-cols-4 gap-2" id="person-buttons-event"></div>
         </div>
-        
-        <!-- Snabbval (anpassas efter Barn vs Förälder) -->
         <div class="flex flex-wrap gap-1.5" id="quick-fill-chips"></div>
-
         <div>
           <input type="text" id="input-title" required placeholder="Vad händer?" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm">
         </div>
@@ -157,30 +157,51 @@
     </div>
   </div>
 
-  <!-- Profil-, Humör-, Avatar- & Nedräknings-modal -->
+  <!-- EGEN MODAL FÖR DAGENS STATUS -->
+  <div id="mood-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="text-base font-bold">Hur är läget idag, <span id="mood-user-title"></span>?</h3>
+        <button onclick="closeMoodPicker()" class="text-slate-400 font-bold text-lg px-1">✕</button>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">Tryck på en status så visas den i toppen för resten av familjen:</p>
+      
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <button type="button" onclick="selectMoodAndClose('⚡ Pigg')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">⚡ Pigg & redo</button>
+        <button type="button" onclick="selectMoodAndClose('😴 Trött')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">😴 Trött</button>
+        <button type="button" onclick="selectMoodAndClose('📚 Pluggar')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">📚 Pluggar</button>
+        <button type="button" onclick="selectMoodAndClose('🎮 Spelar')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">🎮 Spelar</button>
+        <button type="button" onclick="selectMoodAndClose('⚽ Träning')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">⚽ Träning</button>
+        <button type="button" onclick="selectMoodAndClose('😎 Chill')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">😎 Chill</button>
+      </div>
+
+      <div class="flex gap-1.5 mb-3">
+        <input type="text" id="custom-mood-input" maxlength="22" placeholder="Eller skriv kort status..." class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-xs">
+        <button type="button" onclick="saveCustomMood()" class="bg-indigo-600 text-white text-xs font-bold px-3 py-2 rounded-xl">Spara</button>
+      </div>
+
+      <button type="button" onclick="selectMoodAndClose('')" class="w-full text-xs text-slate-500 hover:text-rose-600 font-semibold py-1.5">Rensa min status</button>
+    </div>
+  </div>
+
+  <!-- PROFIL- & INSTÄLLNINGS-MODAL (Endast användarbyte, avatar & admin) -->
   <div id="profile-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl my-auto">
       <div class="flex justify-between items-center mb-3">
-        <h3 class="text-base font-bold">Profil & Status</h3>
-        <button onclick="closeProfilePicker()" class="text-slate-400 font-bold">✕</button>
+        <h3 class="text-base font-bold">Välj profil & avatar</h3>
+        <button onclick="closeProfilePicker()" class="text-slate-400 font-bold text-lg px-1">✕</button>
       </div>
       
       <label class="block text-xs font-semibold text-slate-500 mb-1.5">Vem använder denna mobil?</label>
       <div class="grid grid-cols-3 gap-2 mb-3.5" id="active-user-selector"></div>
 
-      <!-- Dagens humör / status -->
-      <div class="border-t pt-3 mb-3.5">
-        <span class="text-xs font-bold text-slate-700 block mb-1.5">Dagens status för <span id="editing-mood-name"></span>:</span>
-        <div class="flex flex-wrap gap-1.5" id="mood-grid"></div>
-      </div>
-
       <!-- Byt avatar -->
       <div class="border-t pt-3 mb-3">
-        <span class="text-xs font-bold text-slate-700 block mb-1.5">Byt avatar:</span>
+        <span class="text-xs font-bold text-slate-700 block mb-1.5">Byt avatar för <span id="editing-avatar-name"></span>:</span>
         <div class="flex flex-wrap gap-1.5" id="avatar-emoji-grid"></div>
       </div>
 
-      <!-- Föräldrainställningar: Varannan vecka + Nedräknare -->
+      <!-- Föräldrainställningar -->
       <div id="admin-settings-box" class="border-t pt-3 space-y-3 hidden">
         <div>
           <span class="text-xs font-bold text-slate-700 block mb-1.5">🏠 Barnvecka (varannan vecka):</span>
@@ -217,7 +238,7 @@
     let currentUser = localStorage.getItem('veckokollen_user') || null;
     let isAdmin = currentUser === 'Pappa';
     let kidsWeekParity = localStorage.getItem('veckokollen_parity') || 'even';
-    let weekOffset = 0; // 0 = innevarande vecka, +1 = nästa vecka osv.
+    let weekOffset = 0;
     let isHomeworkOpen = true;
     let viewMode = 'day';
     let selectedPerson = currentUser || 'Elsa';
@@ -228,15 +249,6 @@
     let countdownConfig = { title: 'Jullov 🎄', date: '2026-12-22' };
 
     const avatarChoices = ['🦊', '🐱', '🦄', '⚽', '🎨', '🚀', '🦖', '🎮', '🚴', '☕', '🎸', '🌟'];
-    const moodChoices = [
-      { code: '', label: 'Ingen' },
-      { code: '⚡', label: '⚡ Pigg' },
-      { code: '😴', label: '😴 Trött' },
-      { code: '📚', label: '📚 Pluggar' },
-      { code: '🎮', label: '🎮 Spelar' },
-      { code: '⚽', label: '⚽ Träning' },
-      { code: '😎', label: '😎 Chill' }
-    ];
 
     let rawEvents = [];
     let homeworks = [];
@@ -293,7 +305,6 @@
     function changeWeek(delta) {
       weekOffset += delta;
       weekDays = buildWeekDays(weekOffset);
-      // Återapplicera cachat väder på nya datum
       weekDays.forEach(d => { if (weatherCache[d.iso]) d.weather = weatherCache[d.iso]; });
       selectedDateIso = weekDays.find(d => d.isToday)?.iso || weekDays[0].iso;
       updateUserUI();
@@ -489,13 +500,38 @@
       render();
     }
 
-    async function setMood(person, moodEmoji) {
-      moods[person] = moodEmoji;
+    // NYTT: Egen status-väljare som öppnas direkt när man trycker på + Status
+    function openMoodPicker() {
+      if (!currentUser) {
+        alert("Välj först vem du är uppe till höger!");
+        openProfilePicker();
+        return;
+      }
+      document.getElementById('mood-user-title').textContent = currentUser;
+      document.getElementById('custom-mood-input').value = '';
+      const modal = document.getElementById('mood-modal');
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+
+    function closeMoodPicker() {
+      const modal = document.getElementById('mood-modal');
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+
+    async function selectMoodAndClose(statusText) {
+      if (!currentUser) return;
+      moods[currentUser] = statusText;
+      closeMoodPicker();
       updateUserUI();
-      openProfilePicker();
-      const valToSave = moodEmoji || '-';
-      const { error } = await db.from('profiles').upsert({ person: `_mood_${person}`, avatar: valToSave });
-      if (error) console.error('Kunde inte spara status:', error);
+      const valToSave = statusText || '-';
+      await db.from('profiles').upsert({ person: `_mood_${currentUser}`, avatar: valToSave });
+    }
+
+    function saveCustomMood() {
+      const txt = document.getElementById('custom-mood-input').value.trim();
+      selectMoodAndClose(txt);
     }
 
     async function saveCountdown() {
@@ -521,14 +557,12 @@
       const dispWeekNum = getDisplayedWeekNumber();
 
       if (currentUser) {
-        const m = moods[currentUser] ? ` ${moods[currentUser]}` : '';
-        userBtn.innerHTML = `<span>${avatars[currentUser] || '👤'}</span><span>${currentUser}${m}</span>`;
+        userBtn.innerHTML = `<span>${avatars[currentUser] || '👤'}</span><span>${currentUser}</span>`;
       } else {
         userBtn.innerHTML = `<span>👤</span><span>Välj profil</span>`;
       }
 
       if (isAdmin) {
-        // FÖRÄLDER: Visa veckoväxlare + Barnvecka/Egen vecka
         weekNav.classList.remove('hidden');
         childWeekPill.classList.add('hidden');
         weekBadge.classList.remove('hidden');
@@ -551,7 +585,6 @@
         weekendBtn.classList.add('hidden');
         dayTabs.classList.add('hidden');
       } else {
-        // BARN: Visa bara veckonummer (V.48), dölj Barnvecka/Egen vecka
         weekNav.classList.add('hidden');
         weekBadge.classList.add('hidden');
         childWeekPill.classList.remove('hidden');
@@ -565,12 +598,12 @@
         dayTabs.classList.remove('hidden');
       }
 
-      // Uppdatera humör-rad & nedräknare
+      // Visa allas aktuella statusbrickor
       const moodRow = ['Elsa', 'Nils', 'Pappa']
         .filter(u => moods[u] && moods[u] !== '-')
-        .map(u => `<span class="bg-white text-slate-900 border border-slate-200/80 px-2 py-0.5 rounded-full font-semibold shrink-0 shadow-2xs">${avatars[u] || '👤'} ${u} ${moods[u]}</span>`)
+        .map(u => `<span class="bg-white text-slate-900 border border-slate-200/80 px-2 py-0.5 rounded-full font-semibold shrink-0 shadow-2xs">${avatars[u] || '👤'} ${u}: ${moods[u]}</span>`)
         .join('');
-      document.getElementById('family-moods').innerHTML = moodRow || `<span class="bg-white/60 text-slate-700 px-2 py-0.5 rounded-full font-medium">+ Sätt dagens status</span>`;
+      document.getElementById('family-moods').innerHTML = moodRow;
 
       const cdEl = document.getElementById('countdown-pill');
       if (countdownConfig.title && countdownConfig.date) {
@@ -995,7 +1028,6 @@
         </button>
       `).join('');
 
-      // Snabbval anpassade efter barn vs förälder
       const chips = isAdmin
         ? ['🚗 Skjutsa / Hämta', '🎒 Packa gympapåse', '⚽ Träning', '🏠 Kompis hem']
         : ['🏠 Ta med kompis hem', '👋 Leka hos kompis', '🎮 Spelstund', '🎬 Filmkväll'];
@@ -1064,11 +1096,6 @@
 
         const target = currentUser || 'Elsa';
         document.getElementById('editing-avatar-name').textContent = target;
-        document.getElementById('editing-mood-name').textContent = target;
-
-        document.getElementById('mood-grid').innerHTML = moodChoices.map(m => `
-          <button type="button" onclick="setMood('${target}', '${m.code}')" class="px-2 py-1 rounded-lg text-xs border ${(moods[target] || '') === m.code ? 'bg-indigo-100 border-indigo-400 font-bold' : 'bg-slate-50 border-slate-200'}">${m.label}</button>
-        `).join('');
 
         document.getElementById('avatar-emoji-grid').innerHTML = avatarChoices.map(emo => `
           <button type="button" onclick="setAvatar('${target}', '${emo}')" class="w-8 h-8 rounded-lg text-base flex items-center justify-center ${avatars[target] === emo ? 'bg-indigo-100 ring-2 ring-indigo-500' : 'bg-slate-100 hover:bg-slate-200'}">${emo}</button>
