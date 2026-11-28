@@ -69,15 +69,15 @@
     </div>
   </div>
 
-  <!-- Bottom Sheet: Lägg till -->
+  <!-- Bottom Sheet: Lägg till / Redigera -->
   <div id="bottom-sheet" class="hidden fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
     <div class="bg-white w-full max-w-lg rounded-t-3xl p-6 shadow-2xl">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-bold">Lägg till</h3>
+        <h3 class="text-lg font-bold" id="sheet-modal-title">Lägg till</h3>
         <button onclick="closeSheet()" class="text-slate-400 text-xl font-bold px-2">✕</button>
       </div>
 
-      <div class="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl mb-4">
+      <div id="sheet-category-tabs" class="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl mb-4">
         <button type="button" id="tab-type-event" onclick="setFormCategory('event')" class="py-1.5 text-xs font-bold rounded-lg bg-white shadow-xs text-slate-900">📅 Aktivitet</button>
         <button type="button" id="tab-type-dinner" onclick="setFormCategory('dinner')" class="py-1.5 text-xs font-bold rounded-lg text-slate-500">🍽️ Middag</button>
         <button type="button" id="tab-type-homework" onclick="setFormCategory('homework')" class="py-1.5 text-xs font-bold rounded-lg text-slate-500">📚 Läxa/Prov</button>
@@ -152,12 +152,12 @@
             <input type="date" id="hw-due" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
           </div>
         </div>
-        <!-- NYTT: Välj antal gånger -->
+        <!-- Välj antal gånger -->
         <div id="hw-repeat-wrapper">
           <label class="block text-xs font-semibold text-slate-500 mb-1">Antal gånger (t.ex. läsläxa)</label>
           <div class="grid grid-cols-5 gap-1.5" id="hw-target-buttons"></div>
         </div>
-        <button type="submit" class="w-full bg-rose-600 text-white font-semibold py-3 rounded-xl shadow-md">Lägg i pluggradarn</button>
+        <button type="submit" id="hw-submit-btn" class="w-full bg-rose-600 text-white font-semibold py-3 rounded-xl shadow-md">Lägg i pluggradarn</button>
       </form>
     </div>
   </div>
@@ -250,6 +250,10 @@
     let selectedPerson = currentUser || 'Elsa';
     let selectedHwPerson = (currentUser === 'Elsa' || currentUser === 'Nils') ? currentUser : 'Elsa';
     let selectedHwTarget = 1;
+
+    // Redigeringsstate (null = skapa nytt, id = redigera befintlig post)
+    let editingEventId = null;
+    let editingHomeworkId = null;
 
     let avatars = { Elsa: '🦊', Nils: '🚀', Pappa: '☕', Alla: '🏠' };
     let moods = { Elsa: '', Nils: '', Pappa: '' };
@@ -586,8 +590,10 @@
         }
 
         userBtn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-amber-100 text-amber-900 border-amber-300 shadow-2xs flex items-center gap-1";
-        submitBtn.textContent = "Lägg in i schemat";
-        dinnerSubmitBtn.textContent = "Spika middag";
+        if (!editingEventId) {
+          submitBtn.textContent = "Lägg in i schemat";
+          dinnerSubmitBtn.textContent = "Spika middag";
+        }
         container.classList.replace('max-w-md', 'max-w-lg');
         weekendBtn.classList.add('hidden');
         dayTabs.classList.add('hidden');
@@ -598,8 +604,10 @@
         childWeekPill.textContent = `V.${dispWeekNum}`;
 
         userBtn.className = "text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1";
-        submitBtn.textContent = "Skicka förslag";
-        dinnerSubmitBtn.textContent = "Önska middag";
+        if (!editingEventId) {
+          submitBtn.textContent = "Skicka förslag";
+          dinnerSubmitBtn.textContent = "Önska middag";
+        }
         container.classList.replace('max-w-lg', 'max-w-md');
         weekendBtn.classList.remove('hidden');
         dayTabs.classList.remove('hidden');
@@ -622,7 +630,7 @@
       }
     }
 
-    function canDeleteEvent(ev) {
+    function canModifyEvent(ev) {
       if (isAdmin) return true;
       if (!currentUser) return false;
       if (ev.status === 'pending' && (ev.person === currentUser || ev.created_by === currentUser || ev.person === 'Alla')) {
@@ -666,46 +674,144 @@
       await db.from('profiles').upsert({ person, avatar: emo });
     }
 
+    // ==========================================
+    // REDIGERA BEFINTLIG AKTIVITET / MIDDAG / LÄXA
+    // ==========================================
+    function editEvent(id) {
+      if (!currentUser) {
+        openProfilePicker();
+        return;
+      }
+      const ev = rawEvents.find(e => e.id === id);
+      if (!ev) return;
+
+      editingEventId = id;
+      editingHomeworkId = null;
+
+      document.getElementById('sheet-modal-title').textContent = "Redigera";
+      document.getElementById('sheet-category-tabs').classList.add('hidden');
+
+      const sheet = document.getElementById('bottom-sheet');
+      sheet.classList.remove('hidden');
+      sheet.style.display = 'flex';
+
+      const isDinner = ev.is_dinner || (ev.title && ev.title.toLowerCase().startsWith('middag:'));
+      if (isDinner) {
+        setFormCategory('dinner');
+        document.getElementById('dinner-date').value = ev.event_date;
+        document.getElementById('dinner-title').value = ev.title.replace(/^Middag:\s*/i, '');
+        document.getElementById('dinner-submit-btn').textContent = "Spara ändringar";
+        updateSmartDinnerSuggestions();
+      } else {
+        setFormCategory('event');
+        selectedPerson = ev.person;
+        renderPersonSelectors();
+        document.getElementById('input-title').value = ev.title;
+        document.getElementById('input-date').value = ev.event_date;
+        document.getElementById('input-time').value = ev.start_time || '';
+        document.getElementById('input-recurrence').value = ev.recurrence || 'none';
+        document.getElementById('submit-btn').textContent = "Spara ändringar";
+      }
+    }
+
+    function editHomework(id) {
+      if (!currentUser) {
+        openProfilePicker();
+        return;
+      }
+      const hw = homeworks.find(h => h.id === id);
+      if (!hw) return;
+
+      editingHomeworkId = id;
+      editingEventId = null;
+
+      document.getElementById('sheet-modal-title').textContent = "Redigera läxa / prov";
+      document.getElementById('sheet-category-tabs').classList.add('hidden');
+
+      selectedHwPerson = hw.person;
+      selectedHwTarget = hw.target_count || 1;
+      setFormCategory('homework');
+      renderPersonSelectors();
+
+      document.getElementById('hw-title').value = hw.title;
+      document.getElementById('hw-type').value = hw.hw_type || 'weekly';
+      document.getElementById('hw-due').value = hw.due_date;
+      toggleHwRepeatVisibility();
+      document.getElementById('hw-submit-btn').textContent = "Spara ändringar";
+
+      const sheet = document.getElementById('bottom-sheet');
+      sheet.classList.remove('hidden');
+      sheet.style.display = 'flex';
+    }
+
+    // Spara ny eller uppdaterad Aktivitet
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const newEv = {
+      const payload = {
         event_date: document.getElementById('input-date').value,
         start_time: document.getElementById('input-time').value || null,
         person: selectedPerson,
         title: document.getElementById('input-title').value,
-        status: isAdmin ? 'confirmed' : 'pending',
-        is_dinner: false,
         recurrence: document.getElementById('input-recurrence').value
       };
+
+      const editId = editingEventId;
       e.target.reset();
       closeSheet();
-      const { data } = await db.from('events').insert([newEv]).select();
-      if (data) {
-        data[0].created_by = currentUser;
-        rawEvents.push(data[0]);
+
+      if (editId) {
+        const idx = rawEvents.findIndex(item => item.id === editId);
+        if (idx !== -1) rawEvents[idx] = { ...rawEvents[idx], ...payload };
         render();
+        await db.from('events').update(payload).eq('id', editId);
+      } else {
+        const newEv = {
+          ...payload,
+          status: isAdmin ? 'confirmed' : 'pending',
+          is_dinner: false
+        };
+        const { data } = await db.from('events').insert([newEv]).select();
+        if (data) {
+          data[0].created_by = currentUser;
+          rawEvents.push(data[0]);
+          render();
+        }
       }
     });
 
+    // Spara ny eller uppdaterad Middag
     document.getElementById('dinner-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const author = currentUser || selectedPerson;
-      const newEv = {
+      const payload = {
         event_date: document.getElementById('dinner-date').value,
-        start_time: null,
-        person: isAdmin ? 'Alla' : author,
-        title: `Middag: ${document.getElementById('dinner-title').value}`,
-        status: isAdmin ? 'confirmed' : 'pending',
-        is_dinner: true,
-        recurrence: 'none'
+        title: `Middag: ${document.getElementById('dinner-title').value}`
       };
+
+      const editId = editingEventId;
       e.target.reset();
       closeSheet();
-      const { data } = await db.from('events').insert([newEv]).select();
-      if (data) {
-        data[0].created_by = currentUser;
-        rawEvents.push(data[0]);
+
+      if (editId) {
+        const idx = rawEvents.findIndex(item => item.id === editId);
+        if (idx !== -1) rawEvents[idx] = { ...rawEvents[idx], ...payload };
         render();
+        await db.from('events').update(payload).eq('id', editId);
+      } else {
+        const author = currentUser || selectedPerson;
+        const newEv = {
+          ...payload,
+          start_time: null,
+          person: isAdmin ? 'Alla' : author,
+          status: isAdmin ? 'confirmed' : 'pending',
+          is_dinner: true,
+          recurrence: 'none'
+        };
+        const { data } = await db.from('events').insert([newEv]).select();
+        if (data) {
+          data[0].created_by = currentUser;
+          rawEvents.push(data[0]);
+          render();
+        }
       }
     });
 
@@ -715,29 +821,58 @@
       if (wrapper) wrapper.classList.toggle('hidden', hwType !== 'weekly');
     }
 
+    // Spara ny eller uppdaterad Läxa / Prov
     document.getElementById('homework-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const hwType = document.getElementById('hw-type').value;
       const finalTarget = hwType === 'weekly' ? selectedHwTarget : 1;
-      const newHw = {
+      const editId = editingHomeworkId;
+
+      const basePayload = {
         person: selectedHwPerson,
         title: document.getElementById('hw-title').value,
         hw_type: hwType,
         due_date: document.getElementById('hw-due').value,
-        done: false,
         target_count: finalTarget,
-        completed_count: 0,
         recurrence: hwType === 'weekly' ? 'weekly' : 'none'
       };
+
       e.target.reset();
       selectedHwTarget = 1;
       toggleHwRepeatVisibility();
       closeSheet();
-      const { data } = await db.from('homeworks').insert([newHw]).select();
-      if (data) { homeworks.push(data[0]); render(); }
+
+      if (editId) {
+        const idx = homeworks.findIndex(h => h.id === editId);
+        if (idx !== -1) {
+          const prevCompleted = homeworks[idx].completed_count ?? (homeworks[idx].done ? 1 : 0);
+          const adjustedCompleted = Math.min(prevCompleted, finalTarget);
+          const adjustedDone = adjustedCompleted >= finalTarget;
+
+          const updatePayload = {
+            ...basePayload,
+            completed_count: adjustedCompleted,
+            done: adjustedDone
+          };
+
+          homeworks[idx] = { ...homeworks[idx], ...updatePayload };
+          render();
+          await db.from('homeworks').update(updatePayload).eq('id', editId);
+        }
+      } else {
+        const newHw = {
+          ...basePayload,
+          done: false,
+          completed_count: 0
+        };
+        const { data } = await db.from('homeworks').insert([newHw]).select();
+        if (data) {
+          homeworks.push(data[0]);
+          render();
+        }
+      }
     });
 
-    // UPPDATERAD: Stegar upp antal gånger (0 -> 1 -> 2 -> ... -> target -> 0)
     async function toggleHomework(id) {
       const hw = homeworks.find(h => h.id === id);
       if (!hw) return;
@@ -756,7 +891,6 @@
       }).eq('id', id);
     }
 
-    // UPPDATERAD: Nollställer även completed_count vid ny vecka
     async function advanceWeeklyHomework(id) {
       const hw = homeworks.find(h => h.id === id);
       if (!hw) return;
@@ -839,12 +973,11 @@
           ${visibleHomeworks.map(hw => {
             const p = getPersonDisplay(hw.person);
             const due = formatDueDate(hw.due_date);
-            const canDelHw = isAdmin || (currentUser && hw.person === currentUser);
+            const canEditHw = isAdmin || (currentUser && hw.person === currentUser);
             const isWeekly = hw.hw_type === 'weekly';
             const target = hw.target_count || 1;
             const completed = hw.completed_count ?? (hw.done ? target : 0);
 
-            // Visar flera steg-cirklar om target > 1, annars vanlig kryssruta
             const progressHtml = target > 1
               ? `<div onclick="toggleHomework('${hw.id}')" title="Tryck för att bocka av ett steg (${completed}/${target})" class="flex items-center gap-1 shrink-0 cursor-pointer select-none">
                   ${Array.from({ length: target }).map((_, i) => {
@@ -871,7 +1004,10 @@
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
                   ${(isWeekly && hw.done) ? `<button onclick="advanceWeeklyHomework('${hw.id}')" title="Ladda nästa veckas läxa" class="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-1 rounded">↻ Nästa v.</button>` : ''}
-                  ${canDelHw ? `<button onclick="deleteHomework('${hw.id}')" title="Ta bort" class="text-slate-400 hover:text-rose-600 text-xs px-1.5 py-1">✕</button>` : ''}
+                  ${canEditHw ? `
+                    <button onclick="editHomework('${hw.id}')" title="Redigera" class="text-slate-400 hover:text-indigo-600 text-xs px-1.5 py-1">✎</button>
+                    <button onclick="deleteHomework('${hw.id}')" title="Ta bort" class="text-slate-400 hover:text-rose-600 text-xs px-1.5 py-1">✕</button>
+                  ` : ''}
                 </div>
               </div>
             `;
@@ -903,7 +1039,7 @@
       const isPending = ev.status === 'pending';
       const p = getPersonDisplay(ev.person);
       const cardBg = isPending ? 'bg-amber-50 border-amber-300 border-dashed' : (ev.is_dinner ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200');
-      const allowDelete = canDeleteEvent(ev);
+      const allowModify = canModifyEvent(ev);
       const recIcon = ev.recurrence === 'weekly' ? '🔄' : (ev.recurrence === 'biweekly' ? '🔁' : '');
 
       return `
@@ -917,10 +1053,13 @@
             </div>
             <p class="text-xs font-medium text-slate-800 mt-0.5 truncate">${ev.title}</p>
           </div>
-          ${(isAdmin || allowDelete) ? `
+          ${(isAdmin || allowModify) ? `
             <div class="flex gap-1 shrink-0">
               ${(isAdmin && isPending) ? `<button onclick="approveEvent('${ev.id}')" title="Godkänn" class="bg-emerald-600 text-white w-7 h-7 rounded-md font-bold text-xs shadow-xs">✓</button>` : ''}
-              ${allowDelete ? `<button onclick="deleteEvent('${ev.id}')" title="Ta bort" class="bg-white border border-slate-200 text-slate-500 hover:text-rose-600 w-7 h-7 rounded-md font-bold text-xs">✕</button>` : ''}
+              ${allowModify ? `
+                <button onclick="editEvent('${ev.id}')" title="Redigera" class="bg-white border border-slate-200 text-slate-500 hover:text-indigo-600 w-7 h-7 rounded-md font-bold text-xs">✎</button>
+                <button onclick="deleteEvent('${ev.id}')" title="Ta bort" class="bg-white border border-slate-200 text-slate-500 hover:text-rose-600 w-7 h-7 rounded-md font-bold text-xs">✕</button>
+              ` : ''}
             </div>
           ` : ''}
         </div>
@@ -1122,7 +1261,6 @@
         </button>
       `).join('');
 
-      // Rendera piller-knapparna för antal gånger (1x - 5x)
       document.getElementById('hw-target-buttons').innerHTML = [1, 2, 3, 4, 5].map(num => `
         <button type="button" onclick="selectedHwTarget=${num}; renderPersonSelectors();" class="border rounded-lg py-1.5 text-xs font-bold transition ${selectedHwTarget === num ? 'bg-rose-50 border-rose-500 text-rose-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}">
           ${num}x
@@ -1165,9 +1303,24 @@
         openProfilePicker();
         return;
       }
+      editingEventId = null;
+      editingHomeworkId = null;
+      document.getElementById('sheet-modal-title').textContent = "Lägg till";
+      document.getElementById('sheet-category-tabs').classList.remove('hidden');
+      document.getElementById('submit-btn').textContent = isAdmin ? "Lägg in i schemat" : "Skicka förslag";
+      document.getElementById('dinner-submit-btn').textContent = isAdmin ? "Spika middag" : "Önska middag";
+      document.getElementById('hw-submit-btn').textContent = "Lägg i pluggradarn";
+
       selectedPerson = currentUser;
       selectedHwTarget = 1;
       const iso = forcedIso || selectedDateIso;
+      document.getElementById('input-title').value = '';
+      document.getElementById('input-time').value = '';
+      document.getElementById('input-recurrence').value = 'none';
+      document.getElementById('dinner-title').value = '';
+      document.getElementById('hw-title').value = '';
+      document.getElementById('hw-type').value = 'weekly';
+
       document.getElementById('input-date').value = iso;
       document.getElementById('dinner-date').value = iso;
       document.getElementById('hw-due').value = iso;
@@ -1179,6 +1332,8 @@
     }
 
     function closeSheet() {
+      editingEventId = null;
+      editingHomeworkId = null;
       const sheet = document.getElementById('bottom-sheet');
       sheet.classList.add('hidden');
       sheet.style.display = 'none';
