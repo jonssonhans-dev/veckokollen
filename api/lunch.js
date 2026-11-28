@@ -1,8 +1,5 @@
-// api/lunch.js – Använder Skolmatens client-token för att hämta JSON för v.48 & v.49
-const SCHOOL_SLUGS = {
-  lyckeby: 'lyckebyskolan',
-  haga: 'hagaskolan2'
-};
+// api/lunch.js – Hämtar v.48 och v.49 från Skolmaten.se för Lyckeby- och Hagaskolan
+const SCHOOL_SLUG = 'lyckebyskolan';
 
 const SKOLMATEN_HEADERS = {
   'Accept': 'application/json, text/plain, */*',
@@ -22,72 +19,49 @@ function getISOWeekAndYear(date) {
   return { week, year: d.getUTCFullYear() };
 }
 
-function extractMealsFromJson(obj, targetMap) {
-  if (!obj || typeof obj !== 'object') return;
-
-  if (Array.isArray(obj)) {
-    obj.forEach(item => extractMealsFromJson(item, targetMap));
-    return;
-  }
-
-  const dateVal = obj.date || obj.dayDate || obj.isoDate;
-  const mealList = obj.meals || obj.courses || obj.dishes || obj.items;
-
-  if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal) && Array.isArray(mealList)) {
-    const iso = dateVal.slice(0, 10);
-    const names = mealList
-      .map(m => (typeof m === 'string' ? m : (m.value || m.name || m.title || '')))
-      .map(s => s.replace(/<[^>]+>/g, '').trim())
-      .filter(Boolean);
-
-    if (names.length > 0) {
-      targetMap[iso] = names.join(' / ');
-    }
-  }
-
-  Object.values(obj).forEach(val => {
-    if (val && typeof val === 'object') extractMealsFromJson(val, targetMap);
-  });
-}
-
-async function fetchSchoolWeekJson(slug, week, year) {
-  const url = `https://skolmaten.se/api/4/menu/school/${slug}?year=${year}&week=${week}`;
+async function fetchWeekMenu(week, year) {
+  const url = `https://skolmaten.se/api/4/menu/school/${SCHOOL_SLUG}?year=${year}&week=${week}`;
   const res = await fetch(url, { headers: SKOLMATEN_HEADERS });
-  if (!res.ok) return { _error: `HTTP ${res.status}` };
+  if (!res.ok) return {};
 
   const data = await res.json();
   const menuByDate = {};
-  extractMealsFromJson(data, menuByDate);
+  const days = data?.WeekState?.Days || [];
 
-  if (Object.keys(menuByDate).length === 0) {
-    return { _rawSample: JSON.stringify(data).slice(0, 700) };
-  }
+  days.forEach(day => {
+    if (!day.date || day.cancelled) return;
+    const iso = day.date.slice(0, 10);
+    const meals = (day.Meals || [])
+      .map(m => (m.name || '').replace(/<[^>]+>/g, '').trim())
+      .filter(Boolean);
+
+    if (meals.length > 0) {
+      menuByDate[iso] = meals.join(' / ');
+    }
+  });
+
   return menuByDate;
-}
-
-async function fetchTwoWeeksForSchool(slug) {
-  const now = new Date();
-  const nextWeek = new Date(now.getTime() + 7 * 86400000);
-  const w1 = getISOWeekAndYear(now);
-  const w2 = getISOWeekAndYear(nextWeek);
-
-  const [currMenu, nextMenu] = await Promise.all([
-    fetchSchoolWeekJson(slug, w1.week, w1.year),
-    fetchSchoolWeekJson(slug, w2.week, w2.year)
-  ]);
-
-  return { ...currMenu, ...nextMenu };
 }
 
 module.exports = async function handler(req, res) {
   try {
-    const [lyckeby, haga] = await Promise.all([
-      fetchTwoWeeksForSchool(SCHOOL_SLUGS.lyckeby),
-      fetchTwoWeeksForSchool(SCHOOL_SLUGS.haga)
+    const now = new Date();
+    const nextWeek = new Date(now.getTime() + 7 * 86400000);
+    const w1 = getISOWeekAndYear(now);
+    const w2 = getISOWeekAndYear(nextWeek);
+
+    const [currMenu, nextMenu] = await Promise.all([
+      fetchWeekMenu(w1.week, w1.year),
+      fetchWeekMenu(w2.week, w2.year)
     ]);
 
+    const combinedMenu = { ...currMenu, ...nextMenu };
+
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
-    res.status(200).json({ lyckeby, haga });
+    res.status(200).json({
+      lyckeby: combinedMenu,
+      haga: combinedMenu
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
