@@ -1,7 +1,16 @@
-// api/lunch.js – Hämtar innevarande och nästa vecka direkt från Skolmaten.se:s JSON-API
+// api/lunch.js – Använder Skolmatens client-token för att hämta JSON för v.48 & v.49
 const SCHOOL_SLUGS = {
   lyckeby: 'lyckebyskolan',
   haga: 'hagaskolan2'
+};
+
+const SKOLMATEN_HEADERS = {
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'sv,en;q=0.9',
+  'client-token': 'web-eaa12e50-c84c-4b4a-9cfe-4e3fcbcd9165',
+  'client-version': '1.6.1-1',
+  'Referer': 'https://skolmaten.se/',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 };
 
 function getISOWeekAndYear(date) {
@@ -13,7 +22,6 @@ function getISOWeekAndYear(date) {
   return { week, year: d.getUTCFullYear() };
 }
 
-// Rekursiv hjälpfunktion som plockar ut datum (YYYY-MM-DD) och dagens rätter ur JSON-svaret
 function extractMealsFromJson(obj, targetMap) {
   if (!obj || typeof obj !== 'object') return;
 
@@ -44,17 +52,16 @@ function extractMealsFromJson(obj, targetMap) {
 
 async function fetchSchoolWeekJson(slug, week, year) {
   const url = `https://skolmaten.se/api/4/menu/school/${slug}?year=${year}&week=${week}`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Veckokollen)',
-      'Accept': 'application/json'
-    }
-  });
-  if (!res.ok) return {};
+  const res = await fetch(url, { headers: SKOLMATEN_HEADERS });
+  if (!res.ok) return { _error: `HTTP ${res.status}` };
 
   const data = await res.json();
   const menuByDate = {};
   extractMealsFromJson(data, menuByDate);
+
+  if (Object.keys(menuByDate).length === 0) {
+    return { _rawSample: JSON.stringify(data).slice(0, 700) };
+  }
   return menuByDate;
 }
 
