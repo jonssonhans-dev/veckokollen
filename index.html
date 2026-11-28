@@ -40,19 +40,16 @@
         </div>
         
         <div class="flex items-center gap-1.5 shrink-0">
-          <button onclick="openProfilePicker()" id="user-badge-btn" title="Välj användare & avatar" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1">
+          <button onclick="openProfilePicker()" id="user-badge-btn" title="Status, profil & avatar" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white/90 text-slate-800 border-slate-200 shadow-2xs flex items-center gap-1">
             <span>👤</span><span>Välj profil</span>
           </button>
           <button id="weekend-btn" onclick="selectWeekendView()" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border transition bg-white/80 text-indigo-700 border-indigo-200 shadow-2xs">🎉 Helg</button>
         </div>
       </div>
 
-      <!-- Statusrad (Klickbar för att sätta dagens status direkt + Nedräknare) -->
-      <div id="status-bar" class="flex items-center justify-between gap-2 pt-1.5 mt-1 border-t border-black/10 text-[11px]">
-        <div class="flex items-center gap-1.5 overflow-x-auto py-0.5">
-          <button type="button" onclick="openMoodPicker()" class="bg-white/90 hover:bg-white text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-bold shrink-0 shadow-2xs">+ Status</button>
-          <div id="family-moods" onclick="openMoodPicker()" class="flex items-center gap-1.5 cursor-pointer"></div>
-        </div>
+      <!-- Statusrad (Avatar + Namn + Emoji) -->
+      <div id="status-bar" class="flex items-center justify-between gap-1.5 pt-1.5 mt-1 border-t border-black/10 text-[11px]">
+        <div id="family-moods" onclick="openProfilePicker()" title="Tryck för att ändra status" class="flex items-center gap-1 flex-wrap cursor-pointer"></div>
         <div id="countdown-pill" class="shrink-0"></div>
       </div>
 
@@ -162,43 +159,36 @@
     </div>
   </div>
 
-  <!-- EGEN MODAL FÖR DAGENS STATUS -->
-  <div id="mood-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl">
-      <div class="flex justify-between items-center mb-2">
-        <h3 class="text-base font-bold">Hur är läget idag, <span id="mood-user-title"></span>?</h3>
-        <button onclick="closeMoodPicker()" class="text-slate-400 font-bold text-lg px-1">✕</button>
-      </div>
-      <p class="text-xs text-slate-500 mb-3">Tryck på en status så visas den i toppen för resten av familjen:</p>
-      
-      <div class="grid grid-cols-2 gap-2 mb-3">
-        <button type="button" onclick="selectMoodAndClose('⚡ Pigg')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">⚡ Pigg & redo</button>
-        <button type="button" onclick="selectMoodAndClose('😴 Trött')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">😴 Trött</button>
-        <button type="button" onclick="selectMoodAndClose('📚 Pluggar')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">📚 Pluggar</button>
-        <button type="button" onclick="selectMoodAndClose('🎮 Spelar')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">🎮 Spelar</button>
-        <button type="button" onclick="selectMoodAndClose('⚽ Träning')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">⚽ Träning</button>
-        <button type="button" onclick="selectMoodAndClose('😎 Chill')" class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-left text-xs font-bold">😎 Chill</button>
-      </div>
-
-      <div class="flex gap-1.5 mb-3">
-        <input type="text" id="custom-mood-input" maxlength="22" placeholder="Eller skriv kort status..." class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-xs">
-        <button type="button" onclick="saveCustomMood()" class="bg-indigo-600 text-white text-xs font-bold px-3 py-2 rounded-xl">Spara</button>
-      </div>
-
-      <button type="button" onclick="selectMoodAndClose('')" class="w-full text-xs text-slate-500 hover:text-rose-600 font-semibold py-1.5">Rensa min status</button>
-    </div>
-  </div>
-
-  <!-- PROFIL- & INSTÄLLNINGS-MODAL -->
+  <!-- PROFIL-, STATUS- & INSTÄLLNINGS-MODAL -->
   <div id="profile-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl my-auto">
       <div class="flex justify-between items-center mb-3">
-        <h3 class="text-base font-bold">Välj profil & avatar</h3>
+        <h3 class="text-base font-bold">Min profil & status</h3>
         <button onclick="closeProfilePicker()" class="text-slate-400 font-bold text-lg px-1">✕</button>
       </div>
       
       <label class="block text-xs font-semibold text-slate-500 mb-1.5">Vem använder denna mobil?</label>
       <div class="grid grid-cols-3 gap-2 mb-3.5" id="active-user-selector"></div>
+
+      <!-- Statusväljare inuti profilmenyn -->
+      <div id="profile-mood-section" class="border-t pt-3 mb-3 hidden">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="text-xs font-bold text-slate-700">Dagens status för <span id="mood-user-title"></span>:</span>
+          <button type="button" onclick="selectMood('')" class="text-[11px] font-semibold text-rose-600 hover:underline">Rensa</button>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5 mb-2">
+          <button type="button" onclick="selectMood('⚡')" class="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-[11px] font-bold">⚡ Pigg</button>
+          <button type="button" onclick="selectMood('😴')" class="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-[11px] font-bold">😴 Trött</button>
+          <button type="button" onclick="selectMood('📚')" class="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-[11px] font-bold">📚 Pluggar</button>
+          <button type="button" onclick="selectMood('🎮')" class="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-[11px] font-bold">🎮 Spelar</button>
+          <button type="button" onclick="selectMood('⚽')" class="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-[11px] font-bold">⚽ Träning</button>
+          <button type="button" onclick="selectMood('😎')" class="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 text-[11px] font-bold">😎 Chill</button>
+        </div>
+        <div class="flex gap-1.5">
+          <input type="text" id="custom-mood-input" maxlength="18" placeholder="Eller egen emoji / kort ord..." class="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs">
+          <button type="button" onclick="saveCustomMood()" class="bg-indigo-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">Sätt</button>
+        </div>
+      </div>
 
       <!-- Byt avatar -->
       <div class="border-t pt-3 mb-3">
@@ -251,7 +241,6 @@
     let selectedHwPerson = (currentUser === 'Elsa' || currentUser === 'Nils') ? currentUser : 'Elsa';
     let selectedHwTarget = 1;
 
-    // Redigeringsstate (null = skapa nytt, id = redigera befintlig post)
     let editingEventId = null;
     let editingHomeworkId = null;
 
@@ -512,29 +501,10 @@
       render();
     }
 
-    function openMoodPicker() {
-      if (!currentUser) {
-        alert("Välj först vem du är uppe till höger!");
-        openProfilePicker();
-        return;
-      }
-      document.getElementById('mood-user-title').textContent = currentUser;
-      document.getElementById('custom-mood-input').value = '';
-      const modal = document.getElementById('mood-modal');
-      modal.classList.remove('hidden');
-      modal.style.display = 'flex';
-    }
-
-    function closeMoodPicker() {
-      const modal = document.getElementById('mood-modal');
-      modal.classList.add('hidden');
-      modal.style.display = 'none';
-    }
-
-    async function selectMoodAndClose(statusText) {
+    async function selectMood(statusText) {
       if (!currentUser) return;
       moods[currentUser] = statusText;
-      closeMoodPicker();
+      closeProfilePicker();
       updateUserUI();
       const valToSave = statusText || '-';
       await db.from('profiles').upsert({ person: `_mood_${currentUser}`, avatar: valToSave });
@@ -542,7 +512,21 @@
 
     function saveCustomMood() {
       const txt = document.getElementById('custom-mood-input').value.trim();
-      selectMoodAndClose(txt);
+      selectMood(txt);
+    }
+
+    // Formaterar status så att ev. beskrivningstext efter emojin skalas bort (t.ex. "😎 Chill" -> "😎")
+    function formatCompactMood(rawMood) {
+      if (!rawMood || rawMood === '-') return '';
+      const trimmed = rawMood.trim();
+      if (trimmed.includes(' ')) {
+        const firstPart = trimmed.split(/\s+/)[0];
+        // Om första delen inte innehåller vanliga bokstäver/siffror är det en ren emoji -> returnera bara den
+        if (!/^[a-zA-ZåäöÅÄÖ0-9]+$/.test(firstPart)) {
+          return firstPart;
+        }
+      }
+      return trimmed;
     }
 
     async function saveCountdown() {
@@ -613,10 +597,10 @@
         dayTabs.classList.remove('hidden');
       }
 
-      const moodRow = ['Elsa', 'Nils', 'Pappa']
-        .filter(u => moods[u] && moods[u] !== '-')
-        .map(u => `<span class="bg-white text-slate-900 border border-slate-200/80 px-2 py-0.5 rounded-full font-semibold shrink-0 shadow-2xs">${avatars[u] || '👤'} ${u}: ${moods[u]}</span>`)
-        .join('');
+      const activeMoods = ['Elsa', 'Nils', 'Pappa'].filter(u => moods[u] && moods[u] !== '-');
+      const moodRow = activeMoods.length > 0
+        ? activeMoods.map(u => `<span class="bg-white/95 text-slate-900 border border-slate-200/80 px-2 py-0.5 rounded-full font-semibold shadow-2xs">${avatars[u] || '👤'} ${u}: ${formatCompactMood(moods[u])}</span>`).join('')
+        : `<span class="opacity-70 italic">Tryck på din profil för att sätta status</span>`;
       document.getElementById('family-moods').innerHTML = moodRow;
 
       const cdEl = document.getElementById('countdown-pill');
@@ -674,9 +658,6 @@
       await db.from('profiles').upsert({ person, avatar: emo });
     }
 
-    // ==========================================
-    // REDIGERA BEFINTLIG AKTIVITET / MIDDAG / LÄXA
-    // ==========================================
     function editEvent(id) {
       if (!currentUser) {
         openProfilePicker();
@@ -744,7 +725,6 @@
       sheet.style.display = 'flex';
     }
 
-    // Spara ny eller uppdaterad Aktivitet
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = {
@@ -779,7 +759,6 @@
       }
     });
 
-    // Spara ny eller uppdaterad Middag
     document.getElementById('dinner-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = {
@@ -821,7 +800,6 @@
       if (wrapper) wrapper.classList.toggle('hidden', hwType !== 'weekly');
     }
 
-    // Spara ny eller uppdaterad Läxa / Prov
     document.getElementById('homework-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const hwType = document.getElementById('hw-type').value;
@@ -1351,6 +1329,15 @@
             </button>
           `;
         }).join('');
+
+        const moodSection = document.getElementById('profile-mood-section');
+        if (currentUser) {
+          moodSection.classList.remove('hidden');
+          document.getElementById('mood-user-title').textContent = currentUser;
+          document.getElementById('custom-mood-input').value = '';
+        } else {
+          moodSection.classList.add('hidden');
+        }
 
         const target = currentUser || 'Elsa';
         document.getElementById('editing-avatar-name').textContent = target;
