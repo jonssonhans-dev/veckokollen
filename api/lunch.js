@@ -1,7 +1,7 @@
-// api/lunch.js – Anpassad för Skolmaten.se:s exakta RSS-struktur
-const SCHOOLS = {
-  lyckeby: 'https://skolmaten.se/api/4/rss/week/hagaskolan2?locale=sv',
-  haga: 'https://skolmaten.se/api/4/rss/week/lyckebyskolan?locale=sv'
+// api/lunch.js – Hämtar både innevarande och nästa vecka från Skolmaten.se
+const SCHOOL_SLUGS = {
+  lyckeby: 'lyckebyskolan',
+  haga: 'hagaskolan2'
 };
 
 const SWEDISH_MONTHS = {
@@ -10,8 +10,16 @@ const SWEDISH_MONTHS = {
   september: '09', oktober: '10', november: '11', december: '12'
 };
 
+function getISOWeekAndYear(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return { week, year: d.getUTCFullYear() };
+}
+
 function extractDateIso(itemXml) {
-  // 1. Testa att hitta datum i <title> (t.ex. "Onsdag 25 november 2026" eller "25 november")
   const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/i);
   if (titleMatch) {
     const cleanTitle = titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').toLowerCase();
@@ -24,11 +32,9 @@ function extractDateIso(itemXml) {
     }
   }
 
-  // 2. Testa att hitta YYYY-MM-DD var som helst i <guid> eller <link>
   const isoMatch = itemXml.match(/(\d{4}-\d{2}-\d{2})/);
   if (isoMatch) return isoMatch[1];
 
-  // 3. Fallback till <pubDate>
   const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/i);
   if (pubDateMatch) {
     const d = new Date(pubDateMatch[1].trim());
@@ -41,16 +47,8 @@ function extractDateIso(itemXml) {
   return null;
 }
 
-async function fetchSchoolRss(url) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Veckokollen)' }
-  });
-  if (!res.ok) return { _error: `HTTP ${res.status}` };
-
-  const xml = await res.text();
-  const menuByDate = {};
+function parseRssXml(xml, targetMap) {
   const itemMatches = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
-
   itemMatches.forEach(itemXml => {
     const iso = extractDateIso(itemXml);
     const descMatch = itemXml.match(/<description>([\s\S]*?)<\/description>/i);
@@ -64,14 +62,37 @@ async function fetchSchoolRss(url) {
         .replace(/\s+/g, ' ')
         .trim();
 
-      if (cleanFood) menuByDate[iso] = cleanFood;
+      if (cleanFood) targetMap[iso] = cleanFood;
     }
   });
+}
 
-  // Om det fortfarande blir tomt, skicka med rå-utdrag för felsökning
-  if (Object.keys(menuByDate).length === 0) {
-    return { _debug_sample: xml.slice(0, 400) };
-  }
+async function fetchSchoolTwoWeeks(slug) {
+  const menuByDate = {};
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Veckokollen)' };
+
+  // Räkna ut innevarande vecka och nästa vecka (t.ex. v.48 och v.49)
+  const now = new Date();
+  const nextWeekDate = new Date(now.getTime() + 7 * 86400000);
+  const curr = getISOWeekAndYear(now);
+  const next = getISOWeekAndYear(nextWeekDate);
+
+  // Hämta både multi-week RSS och specifik vecka för innevarande + nästa vecka parallellt
+  const urls = [
+    `https://skolmaten.se/api/4/rss/weeks/${slug}?locale=sv&limit=2`,
+    `https://skolmaten.se/api/4/rss/week/${slug}?locale=sv&week=${curr.week}&year=${curr.year}`,
+    `https://skolmaten.se/api/4/rss/week/${slug}?locale=sv&week=${next.week}&year=${next.year}`
+  ];
+
+  const responses = await Promise.allSettled(
+    urls.map(u => fetch(u, { headers }).then(r => (r.ok ? r.text() : '')))
+  );
+
+  responses.forEach(res => {
+    if (res.status === 'fulfilled' && res.value) {
+      parseRssXml(res.value, menuByDate);
+    }
+  });
 
   return menuByDate;
 }
@@ -79,8 +100,8 @@ async function fetchSchoolRss(url) {
 module.exports = async function handler(req, res) {
   try {
     const [lyckeby, haga] = await Promise.all([
-      fetchSchoolRss(SCHOOLS.lyckeby),
-      fetchSchoolRss(SCHOOLS.haga)
+      fetchSchoolTwoWeeks(SCHOOL_SLUGS.lyckeby),
+      fetchSchoolTwoWeeks(SCHOOL_SLUGS.haga)
     ]);
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
