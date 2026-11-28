@@ -1,84 +1,86 @@
-// api/lunch.js – Felsökning av Skolmaten.se v.49
+// api/lunch.js – Hämtar innevarande och nästa vecka direkt från Skolmaten.se:s JSON-API
 const SCHOOL_SLUGS = {
   lyckeby: 'lyckebyskolan',
   haga: 'hagaskolan2'
 };
 
-const SWEDISH_MONTHS = {
-  januari: '01', februari: '02', mars: '03', april: '04',
-  maj: '05', juni: '06', juli: '07', augusti: '08',
-  september: '09', oktober: '10', november: '11', december: '12'
-};
-
-function extractDateIso(itemXml) {
-  const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/i);
-  if (titleMatch) {
-    const cleanTitle = titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').toLowerCase();
-    const dateParts = cleanTitle.match(/(\d{1,2})\s+(januari|februari|mars|april|maj|juni|juli|augusti|september|oktober|november|december)(?:\s+(\d{4}))?/);
-    if (dateParts) {
-      const day = dateParts[1].padStart(2, '0');
-      const month = SWEDISH_MONTHS[dateParts[2]];
-      const year = dateParts[3] || new Date().getFullYear();
-      return `${year}-${month}-${day}`;
-    }
-  }
-  const isoMatch = itemXml.match(/(\d{4}-\d{2}-\d{2})/);
-  return isoMatch ? isoMatch[1] : null;
+function getISOWeekAndYear(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return { week, year: d.getUTCFullYear() };
 }
 
-async function fetchRssFallback(slug) {
-  const res = await fetch(`https://skolmaten.se/api/4/rss/week/${slug}?locale=sv`, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Veckokollen)' }
+// Rekursiv hjälpfunktion som plockar ut datum (YYYY-MM-DD) och dagens rätter ur JSON-svaret
+function extractMealsFromJson(obj, targetMap) {
+  if (!obj || typeof obj !== 'object') return;
+
+  if (Array.isArray(obj)) {
+    obj.forEach(item => extractMealsFromJson(item, targetMap));
+    return;
+  }
+
+  const dateVal = obj.date || obj.dayDate || obj.isoDate;
+  const mealList = obj.meals || obj.courses || obj.dishes || obj.items;
+
+  if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal) && Array.isArray(mealList)) {
+    const iso = dateVal.slice(0, 10);
+    const names = mealList
+      .map(m => (typeof m === 'string' ? m : (m.value || m.name || m.title || '')))
+      .map(s => s.replace(/<[^>]+>/g, '').trim())
+      .filter(Boolean);
+
+    if (names.length > 0) {
+      targetMap[iso] = names.join(' / ');
+    }
+  }
+
+  Object.values(obj).forEach(val => {
+    if (val && typeof val === 'object') extractMealsFromJson(val, targetMap);
   });
-  if (!res.ok) return {};
-  const xml = await res.text();
-  const map = {};
-  (xml.match(/<item[\s\S]*?<\/item>/gi) || []).forEach(itemXml => {
-    const iso = extractDateIso(itemXml);
-    const desc = itemXml.match(/<description>([\s\S]*?)<\/description>/i);
-    if (iso && desc) {
-      map[iso] = desc[1]
-        .replace(/<!\[CDATA\[|\]\]>/g, '')
-        .replace(/&lt;br\s*\/?&gt;|<br\s*\/?>/gi, ' / ')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&amp;/g, '&')
-        .replace(/\s+/g, ' ')
-        .trim();
+}
+
+async function fetchSchoolWeekJson(slug, week, year) {
+  const url = `https://skolmaten.se/api/4/menu/school/${slug}?year=${year}&week=${week}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Veckokollen)',
+      'Accept': 'application/json'
     }
   });
-  return map;
+  if (!res.ok) return {};
+
+  const data = await res.json();
+  const menuByDate = {};
+  extractMealsFromJson(data, menuByDate);
+  return menuByDate;
+}
+
+async function fetchTwoWeeksForSchool(slug) {
+  const now = new Date();
+  const nextWeek = new Date(now.getTime() + 7 * 86400000);
+  const w1 = getISOWeekAndYear(now);
+  const w2 = getISOWeekAndYear(nextWeek);
+
+  const [currMenu, nextMenu] = await Promise.all([
+    fetchSchoolWeekJson(slug, w1.week, w1.year),
+    fetchSchoolWeekJson(slug, w2.week, w2.year)
+  ]);
+
+  return { ...currMenu, ...nextMenu };
 }
 
 module.exports = async function handler(req, res) {
   try {
-    const [lyckeby, haga, pageRes] = await Promise.all([
-      fetchRssFallback(SCHOOL_SLUGS.lyckeby),
-      fetchRssFallback(SCHOOL_SLUGS.haga),
-      fetch('https://skolmaten.se/lyckebyskolan?week=49&year=2026', {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
-      })
+    const [lyckeby, haga] = await Promise.all([
+      fetchTwoWeeksForSchool(SCHOOL_SLUGS.lyckeby),
+      fetchTwoWeeksForSchool(SCHOOL_SLUGS.haga)
     ]);
 
-    const html = await pageRes.text();
-    // Plocka ut texten runt måndag/tisdag eller API-anrop i koden
-    const apiHints = html.match(/\/api\/[a-zA-Z0-9/_-]+/g) || [];
-    const textSnippet = html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 800);
-
-    res.status(200).json({
-      lyckeby,
-      haga,
-      _debug: {
-        status: pageRes.status,
-        apiHints: [...new Set(apiHints)],
-        textSnippet
-      }
-    });
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    res.status(200).json({ lyckeby, haga });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
