@@ -142,7 +142,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-slate-500 mb-1">Typ</label>
-            <select id="hw-type" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
+            <select id="hw-type" onchange="toggleHwRepeatVisibility()" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
               <option value="weekly">Veckoläxa (återkommande)</option>
               <option value="exam">Prov / Inlämning (engångs)</option>
             </select>
@@ -151,6 +151,11 @@
             <label class="block text-xs font-semibold text-slate-500 mb-1">Klar senast (dag)</label>
             <input type="date" id="hw-due" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm bg-white">
           </div>
+        </div>
+        <!-- NYTT: Välj antal gånger -->
+        <div id="hw-repeat-wrapper">
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Antal gånger (t.ex. läsläxa)</label>
+          <div class="grid grid-cols-5 gap-1.5" id="hw-target-buttons"></div>
         </div>
         <button type="submit" class="w-full bg-rose-600 text-white font-semibold py-3 rounded-xl shadow-md">Lägg i pluggradarn</button>
       </form>
@@ -184,7 +189,7 @@
     </div>
   </div>
 
-  <!-- PROFIL- & INSTÄLLNINGS-MODAL (Endast användarbyte, avatar & admin) -->
+  <!-- PROFIL- & INSTÄLLNINGS-MODAL -->
   <div id="profile-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl my-auto">
       <div class="flex justify-between items-center mb-3">
@@ -244,6 +249,7 @@
     let parentFilter = 'all'; // 'all' | 'food' | 'Elsa' | 'Nils'
     let selectedPerson = currentUser || 'Elsa';
     let selectedHwPerson = (currentUser === 'Elsa' || currentUser === 'Nils') ? currentUser : 'Elsa';
+    let selectedHwTarget = 1;
 
     let avatars = { Elsa: '🦊', Nils: '🚀', Pappa: '☕', Alla: '🏠' };
     let moods = { Elsa: '', Nils: '', Pappa: '' };
@@ -502,7 +508,6 @@
       render();
     }
 
-    // NYTT: Egen status-väljare som öppnas direkt när man trycker på + Status
     function openMoodPicker() {
       if (!currentUser) {
         alert("Välj först vem du är uppe till höger!");
@@ -600,7 +605,6 @@
         dayTabs.classList.remove('hidden');
       }
 
-      // Visa allas aktuella statusbrickor
       const moodRow = ['Elsa', 'Nils', 'Pappa']
         .filter(u => moods[u] && moods[u] !== '-')
         .map(u => `<span class="bg-white text-slate-900 border border-slate-200/80 px-2 py-0.5 rounded-full font-semibold shrink-0 shadow-2xs">${avatars[u] || '👤'} ${u}: ${moods[u]}</span>`)
@@ -705,31 +709,54 @@
       }
     });
 
+    function toggleHwRepeatVisibility() {
+      const hwType = document.getElementById('hw-type').value;
+      const wrapper = document.getElementById('hw-repeat-wrapper');
+      if (wrapper) wrapper.classList.toggle('hidden', hwType !== 'weekly');
+    }
+
     document.getElementById('homework-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const hwType = document.getElementById('hw-type').value;
+      const finalTarget = hwType === 'weekly' ? selectedHwTarget : 1;
       const newHw = {
         person: selectedHwPerson,
         title: document.getElementById('hw-title').value,
         hw_type: hwType,
         due_date: document.getElementById('hw-due').value,
         done: false,
+        target_count: finalTarget,
+        completed_count: 0,
         recurrence: hwType === 'weekly' ? 'weekly' : 'none'
       };
       e.target.reset();
+      selectedHwTarget = 1;
+      toggleHwRepeatVisibility();
       closeSheet();
       const { data } = await db.from('homeworks').insert([newHw]).select();
       if (data) { homeworks.push(data[0]); render(); }
     });
 
+    // UPPDATERAD: Stegar upp antal gånger (0 -> 1 -> 2 -> ... -> target -> 0)
     async function toggleHomework(id) {
       const hw = homeworks.find(h => h.id === id);
       if (!hw) return;
-      hw.done = !hw.done;
+      const target = hw.target_count || 1;
+      const current = hw.completed_count ?? (hw.done ? target : 0);
+      const nextCount = current >= target ? 0 : current + 1;
+      const isDone = nextCount >= target;
+
+      hw.completed_count = nextCount;
+      hw.done = isDone;
       render();
-      await db.from('homeworks').update({ done: hw.done }).eq('id', id);
+
+      await db.from('homeworks').update({
+        completed_count: nextCount,
+        done: isDone
+      }).eq('id', id);
     }
 
+    // UPPDATERAD: Nollställer även completed_count vid ny vecka
     async function advanceWeeklyHomework(id) {
       const hw = homeworks.find(h => h.id === id);
       if (!hw) return;
@@ -738,8 +765,13 @@
       const nextIso = d.toISOString().split('T')[0];
       hw.due_date = nextIso;
       hw.done = false;
+      hw.completed_count = 0;
       render();
-      await db.from('homeworks').update({ due_date: nextIso, done: false }).eq('id', id);
+      await db.from('homeworks').update({
+        due_date: nextIso,
+        done: false,
+        completed_count: 0
+      }).eq('id', id);
     }
 
     async function deleteHomework(id) {
@@ -809,15 +841,28 @@
             const due = formatDueDate(hw.due_date);
             const canDelHw = isAdmin || (currentUser && hw.person === currentUser);
             const isWeekly = hw.hw_type === 'weekly';
+            const target = hw.target_count || 1;
+            const completed = hw.completed_count ?? (hw.done ? target : 0);
+
+            // Visar flera steg-cirklar om target > 1, annars vanlig kryssruta
+            const progressHtml = target > 1
+              ? `<div onclick="toggleHomework('${hw.id}')" title="Tryck för att bocka av ett steg (${completed}/${target})" class="flex items-center gap-1 shrink-0 cursor-pointer select-none">
+                  ${Array.from({ length: target }).map((_, i) => {
+                    const filled = i < completed;
+                    return `<span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border transition ${filled ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-slate-50 border-slate-300 text-slate-400 hover:border-rose-400'}">${filled ? '✓' : i + 1}</span>`;
+                  }).join('')}
+                </div>`
+              : `<input type="checkbox" ${hw.done ? 'checked' : ''} onchange="toggleHomework('${hw.id}')" class="w-4 h-4 rounded accent-rose-600 shrink-0 cursor-pointer">`;
+
             return `
               <div class="flex items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border ${hw.done ? 'border-slate-100 opacity-75' : 'border-rose-100'}">
-                <div class="flex items-center gap-2.5 min-w-0">
-                  <input type="checkbox" ${hw.done ? 'checked' : ''} onchange="toggleHomework('${hw.id}')" class="w-4 h-4 rounded accent-rose-600 shrink-0 cursor-pointer">
-                  <div class="min-w-0">
+                <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                  ${progressHtml}
+                  <div class="min-w-0 flex-1 cursor-pointer" onclick="toggleHomework('${hw.id}')">
                     <div class="flex items-center gap-1.5 flex-wrap">
                       <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${p.cls}">${p.label}</span>
                       <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${hw.hw_type === 'exam' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'}">
-                        ${hw.hw_type === 'exam' ? '🎯 Prov' : '🔄 Veckoläxa'}
+                        ${hw.hw_type === 'exam' ? '🎯 Prov' : (target > 1 ? `🔄 ${completed}/${target} ggr` : '🔄 Veckoläxa')}
                       </span>
                       <span class="text-[11px] font-semibold ${due.isNextWeek ? 'text-amber-700' : 'text-slate-500'}">→ ${due.text}</span>
                     </div>
@@ -1077,6 +1122,13 @@
         </button>
       `).join('');
 
+      // Rendera piller-knapparna för antal gånger (1x - 5x)
+      document.getElementById('hw-target-buttons').innerHTML = [1, 2, 3, 4, 5].map(num => `
+        <button type="button" onclick="selectedHwTarget=${num}; renderPersonSelectors();" class="border rounded-lg py-1.5 text-xs font-bold transition ${selectedHwTarget === num ? 'bg-rose-50 border-rose-500 text-rose-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}">
+          ${num}x
+        </button>
+      `).join('');
+
       const chips = isAdmin
         ? ['🚗 Skjutsa / Hämta', '🎒 Packa gympapåse', '⚽ Träning', '🏠 Kompis hem']
         : ['🏠 Ta med kompis hem', '👋 Leka hos kompis', '🎮 Spelstund', '🎬 Filmkväll'];
@@ -1105,6 +1157,7 @@
       document.getElementById('tab-type-dinner').className = cat === 'dinner' ? "py-1.5 text-xs font-bold rounded-lg bg-white shadow-xs text-emerald-700" : "py-1.5 text-xs font-bold rounded-lg text-slate-500";
       document.getElementById('tab-type-homework').className = cat === 'homework' ? "py-1.5 text-xs font-bold rounded-lg bg-white shadow-xs text-rose-700" : "py-1.5 text-xs font-bold rounded-lg text-slate-500";
       if (cat === 'dinner') updateSmartDinnerSuggestions();
+      if (cat === 'homework') toggleHwRepeatVisibility();
     }
 
     function openSheet(forcedIso = null, category = 'event') {
@@ -1113,6 +1166,7 @@
         return;
       }
       selectedPerson = currentUser;
+      selectedHwTarget = 1;
       const iso = forcedIso || selectedDateIso;
       document.getElementById('input-date').value = iso;
       document.getElementById('dinner-date').value = iso;
